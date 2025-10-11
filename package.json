@@ -9,7 +9,12 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["telegram", "bot", "typescript", "scam-bait"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "typescript",
+    "scam-bait"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

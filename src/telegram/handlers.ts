@@ -3,11 +3,8 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
+import { getResponse } from "../llm/llm";
 
-interface ConversationState {
-  step: number;
-}
-const conversations = new Map<string, ConversationState>();
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
 // the entire history on every message. Updated lazily when accessed.
@@ -42,15 +39,15 @@ async function resolveInputPeerSafe(client: any, message: any): Promise<any | un
   try {
     const byMessage = await message.getInputChat?.();
     if (byMessage) return byMessage;
-  } catch {}
+  } catch { }
   try {
     // Fallback: resolve via peerId or sender id
     if (message?.peerId) return await client.getInputEntity(message.peerId);
-  } catch {}
+  } catch { }
   try {
     const uid = (message?.fromId as any)?.userId;
     if (uid) return await client.getInputEntity(uid);
-  } catch {}
+  } catch { }
   return undefined;
 }
 
@@ -154,14 +151,6 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
   return cached;
 }
 
-const conversationFlow: string[] = [
-  "Hello? Who is this?",
-  "Oh, I see. How did you get my number?",
-  "I'm not sure I remember you. What is this about?",
-  "Okay, I'm listening...",
-  "That sounds... interesting. Tell me more.",
-];
-
 export async function messageHandler(event: NewMessageEvent): Promise<void> {
   const message = event.message;
   const client = (event as any)._client;
@@ -197,18 +186,12 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   }
 
   let llmContext: LLMContextEntry[] = [];
-  llmContext = convertContextToLLM(context);
+  llmContext = convertContextToLLM(context, appConfig.systemPrompt);
 
   console.log("Context:", llmContext);
 
-  let convoState = conversations.get(senderIdString);
-  if (!convoState) {
-    convoState = { step: 0 };
-  }
 
-  const replyText =
-    conversationFlow[convoState.step] ||
-    "Sorry, I need to go now. Talk later.";
+  const replyText = await getResponse(llmContext) || "Ttyl xoxo";
 
   // inputPeer already resolved above; if not available, we still try to proceed
 
@@ -223,7 +206,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
             action: new Api.SendMessageTypingAction(),
           })
         )
-        .catch(() => {});
+        .catch(() => { });
 
     // Fire immediately, then keep alive per config
     sendTyping();
@@ -238,7 +221,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
             action: new Api.SendMessageCancelAction(),
           })
         )
-        .catch(() => {});
+        .catch(() => { });
     };
   };
 
@@ -267,7 +250,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     console.log(`Replied to ${senderIdString}: "${replyText}"`);
   } catch (error) {
     console.error("Failed to send message:", error);
-    
+
     // Fallback: try using the API directly
     try {
       await client.invoke(
@@ -285,11 +268,5 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   } finally {
     stopTyping();
   }
-
-  convoState.step++;
-  conversations.set(senderIdString, convoState);
-
-  if (convoState.step >= conversationFlow.length) {
-    conversations.delete(senderIdString);
-  }
+  // TODO: Add logic to delete or end chat in some cases
 }
