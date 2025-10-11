@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scam Bait Bot Control Panel</title>
+    <style>
+        /* Theme variables: default to dark */
+        :root {
+            --bg: #0f1115;
+            --text: #e5e7eb;
+            --container-bg: #171a21;
+            --shadow: rgba(0,0,0,0.4);
+            --heading: var(--text);
+            --log-bg: #0b0f14;
+            --log-border: #2a3241;
+            --btn-text: #ffffff;
+            --button-start-bg: #1f7a31;
+            --button-start-bg-hover: #186027;
+            --button-stop-bg: #a72a39;
+            --button-stop-bg-hover: #8c2330;
+            --status-running-bg: #15351f;
+            --status-running-text: #9de7b4;
+            --status-running-border: #1f5d34;
+            --status-stopped-bg: #3a1217;
+            --status-stopped-text: #f2b8b8;
+            --status-stopped-border: #6b1f2a;
+            --warning-bg: #3a3005;
+            --warning-text: #f6d58d;
+            --warning-border: #6b5a1f;
+        }
+        /* Light theme overrides */
+        .theme-light {
+            --bg: #f5f5f5;
+            --text: #333333;
+            --container-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.1);
+            --heading: #333333;
+            --log-bg: #f8f9fa;
+            --log-border: #dee2e6;
+            --btn-text: #ffffff;
+            --button-start-bg: #28a745;
+            --button-start-bg-hover: #218838;
+            --button-stop-bg: #dc3545;
+            --button-stop-bg-hover: #c82333;
+            --status-running-bg: #d4edda;
+            --status-running-text: #155724;
+            --status-running-border: #c3e6cb;
+            --status-stopped-bg: #f8d7da;
+            --status-stopped-text: #721c24;
+            --status-stopped-border: #f5c6cb;
+            --warning-bg: #fff3cd;
+            --warning-text: #856404;
+            --warning-border: #ffeaa7;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg);
+            color: var(--text);
+        }
+        .container {
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px var(--shadow);
+        }
+        h1 {
+            color: var(--heading);
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 46px;
+            height: 24px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #555;
+            transition: .2s;
+            border-radius: 999px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: #fff;
+            transition: .2s;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        input:checked + .slider { background-color: #2563eb; }
+        input:checked + .slider:before { transform: translateX(22px); }
+        /* Toggle icons */
+        .slider .icon { 
+            position: absolute; 
+            top: 50%; 
+            transform: translateY(-50%); 
+            opacity: 0; 
+            transition: opacity .2s ease; 
+            z-index: 1;
+        }
+        .slider .icon svg { width: 14px; height: 14px; display: block; fill: currentColor; }
+        .slider .icon.moon { left: 6px; color: #cbd5e1; }
+        .slider .icon.sun { right: 6px; color: #fbbf24; }
+        input:checked + .slider .icon.moon { opacity: 1; }
+        input:checked + .slider .icon.sun { opacity: 0; }
+        input:not(:checked) + .slider .icon.moon { opacity: 0; }
+        input:not(:checked) + .slider .icon.sun { opacity: 1; }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.running {
+            background-color: var(--status-running-bg);
+            color: var(--status-running-text);
+            border: 1px solid var(--status-running-border);
+        }
+        .status.stopped {
+            background-color: var(--status-stopped-bg);
+            color: var(--status-stopped-text);
+            border: 1px solid var(--status-stopped-border);
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .start-btn {
+            background-color: var(--button-start-bg);
+            color: var(--btn-text);
+        }
+        .start-btn:hover {
+            background-color: var(--button-start-bg-hover);
+        }
+        .stop-btn {
+            background-color: var(--button-stop-bg);
+            color: var(--btn-text);
+        }
+        .stop-btn:hover {
+            background-color: var(--button-stop-bg-hover);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .log {
+            background-color: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: var(--text);
+        }
+        .warning {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            border: 1px solid var(--warning-border);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="theme-toggle" role="group" aria-label="Theme toggle">
+            <label class="switch" aria-label="Toggle theme">
+                <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
+                <span class="slider">
+                    <span class="icon moon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
+                        </svg>
+                    </span>
+                    <span class="icon sun" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z"></path>
+                        </svg>
+                    </span>
+                </span>
+            </label>
+        </div>
+        <h1>🤖 Scam Bait Bot Control Panel</h1>
+        
+        <div class="warning">
+            <strong>⚠️ Important:</strong> This bot is for educational purposes only. 
+            Make sure to use a secondary Telegram account, not your personal one, 
+            as this could result in account suspension.
+        </div>
+
+        <div id="status" class="status stopped">
+            Status: Checking...
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="start-btn">Start Bot</button>
+            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
+        </div>
+
+        <div class="log" id="log">
+            <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
