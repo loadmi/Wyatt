@@ -186,9 +186,11 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   }
 
   let llmContext: LLMContextEntry[] = [];
-  llmContext = convertContextToLLM(context, appConfig.systemPrompt);
+  console.log("System Prompt:", appConfig().systemPrompt);
+  llmContext = convertContextToLLM(context, appConfig().systemPrompt);
 
-  // console.log("Context:", llmContext);
+
+  console.log("Context:", llmContext);
 
 
   const replyText = await getResponse(llmContext) || "Ttyl xoxo";
@@ -210,7 +212,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
     // Fire immediately, then keep alive per config
     sendTyping();
-    const interval = setInterval(sendTyping, appConfig.typingKeepaliveMs);
+    const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
 
     return () => {
       clearInterval(interval);
@@ -227,15 +229,15 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   // Phase 1: silent wait before typing
   const waitBefore = randomInRange(
-    appConfig.waitBeforeTypingMs.min,
-    appConfig.waitBeforeTypingMs.max
+    appConfig().waitBeforeTypingMs.min,
+    appConfig().waitBeforeTypingMs.max
   );
   await sleep(waitBefore);
 
   // Phase 2: show typing for configured duration
   const typingFor = randomInRange(
-    appConfig.typingDurationMs.min,
-    appConfig.typingDurationMs.max
+    appConfig().typingDurationMs.min,
+    appConfig().typingDurationMs.max
   );
   const stopTyping = startTyping();
   await sleep(typingFor);

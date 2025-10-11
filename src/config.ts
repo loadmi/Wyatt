@@ -1,7 +1,6 @@
 // src/config.ts
 // Centralized application configuration and simple helpers
-
-import granny from './llm/personas/granny.json';
+import granny from "./llm/personas/granny.json";
 
 type NumRange = { min: number; max: number };
 
@@ -12,8 +11,7 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-
-export const appConfig = {
+const config = {
   // Initial silent wait before showing typing
   waitBeforeTypingMs: {
     min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 1_000),
@@ -28,8 +26,11 @@ export const appConfig = {
 
   // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
   typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
-  systemPrompt: JSON.stringify(granny) || "You are an old lady who likes to chat with young people on Telegram. You respond in a friendly and engaging manner, often sharing anecdotes from your life. Keep your replies concise and warm.",
+  systemPrompt: JSON.stringify(granny),
 };
+
+
+export const appConfig = () => config;
 
 export function randomInRange(min: number, max: number): number {
   if (max <= min) return min;
@@ -41,3 +42,9 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+
+export function setConfig(newConfig: Partial<typeof config>): void {
+  Object.assign(config, newConfig);
+  console.log("Config Updated");
+
+}
