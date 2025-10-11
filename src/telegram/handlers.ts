@@ -76,7 +76,7 @@ function toIdStringSafe(x: any): string | null {
       const s = x.toString();
       return s && s !== "[object Object]" ? String(s) : null;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -118,11 +118,11 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
             const length = (ent as any).length ?? 0;
             const segment = text.substr(offset, length).toLowerCase();
             if (self.usernameLower && segment === "@" + self.usernameLower) return true;
-          } catch {}
+          } catch { }
         }
       }
     }
-  } catch {}
+  } catch { }
 
   // Reply check: if user replied to one of our (outgoing) messages
   try {
@@ -330,7 +330,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   }
 
   let llmContext: LLMContextEntry[] = [];
-  console.log("System Prompt:", appConfig().systemPrompt);
+  // console.log("System Prompt:", appConfig().systemPrompt);
   llmContext = convertContextToLLM(context, appConfig().systemPrompt);
 
 
