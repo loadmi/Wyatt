@@ -16,6 +16,129 @@ type ContextEntry = {
 };
 const historyCache = new Map<string, ContextEntry[]>();
 
+// Cached self info to detect mentions/replies in group chats
+let selfUsernameCached: string | null = null;
+let selfIdStringCached: string | null = null;
+
+async function getSelfIdentity(client: any): Promise<{ usernameLower: string | null; idString: string | null }> {
+  if (selfUsernameCached !== null || selfIdStringCached !== null) {
+    return { usernameLower: selfUsernameCached, idString: selfIdStringCached };
+  }
+  try {
+    const me = await client.getMe();
+    const username = (me as any)?.username;
+    selfUsernameCached = username ? String(username).toLowerCase() : null;
+    try {
+      const rawId = (me as any)?.id ?? (me as any)?._id;
+      // Convert id to a stable string when possible
+      if (rawId !== undefined && rawId !== null) {
+        if (typeof rawId === "bigint") selfIdStringCached = String(rawId);
+        else if (typeof rawId === "number" || typeof rawId === "string") selfIdStringCached = String(rawId);
+        else if (typeof rawId?.toString === "function") selfIdStringCached = String(rawId.toString());
+      }
+    } catch { selfIdStringCached = null; }
+  } catch {
+    selfUsernameCached = null;
+    selfIdStringCached = null;
+  }
+  return { usernameLower: selfUsernameCached, idString: selfIdStringCached };
+}
+
+function isPeerUser(peerId: any): boolean {
+  try {
+    return peerId instanceof Api.PeerUser || peerId?.className === "PeerUser";
+  } catch {
+    return false;
+  }
+}
+
+function isPeerChatOrChannel(peerId: any): boolean {
+  try {
+    return (
+      peerId instanceof Api.PeerChat ||
+      peerId instanceof Api.PeerChannel ||
+      peerId?.className === "PeerChat" ||
+      peerId?.className === "PeerChannel"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function toIdStringSafe(x: any): string | null {
+  try {
+    if (x === null || x === undefined) return null;
+    if (typeof x === "string" || typeof x === "number" || typeof x === "bigint") return String(x);
+    if (x?.userId !== undefined) return toIdStringSafe(x.userId);
+    if (x?.id !== undefined) return toIdStringSafe(x.id);
+    if (x?.value !== undefined) return toIdStringSafe(x.value);
+    if (typeof x.toString === "function") {
+      const s = x.toString();
+      return s && s !== "[object Object]" ? String(s) : null;
+    }
+  } catch {}
+  return null;
+}
+
+async function shouldRespondInContext(message: any, client: any): Promise<boolean> {
+  const peerId = message?.peerId;
+
+  // Direct/private chats: always respond
+  if (isPeerUser(peerId)) return true;
+
+  // Group/supergroup/channel: respond only if mentioned or replied to our message
+  if (!isPeerChatOrChannel(peerId)) return false;
+
+  const text: string = (message?.message ?? "").toString();
+
+  // Mention check (by @username or by entity pointing to self)
+  const self = await getSelfIdentity(client);
+  const usernameMention = !!(self.usernameLower && text.toLowerCase().includes("@" + self.usernameLower));
+  if (usernameMention) return true;
+
+  // Entity-based mention (@display name without username)
+  try {
+    const entities = (message as any)?.entities;
+    if (Array.isArray(entities) && entities.length > 0 && self.idString) {
+      for (const ent of entities) {
+        // Mentions without @username carry a userId in the entity
+        if (
+          ent instanceof Api.MessageEntityMentionName ||
+          ent?.className === "MessageEntityMentionName"
+        ) {
+          const entUserIdStr = toIdStringSafe((ent as any).userId);
+          if (entUserIdStr && self.idString && entUserIdStr === self.idString) {
+            return true;
+          }
+        }
+        // Also accept explicit @mention entities as a backup
+        if (ent instanceof Api.MessageEntityMention || ent?.className === "MessageEntityMention") {
+          try {
+            const offset = (ent as any).offset ?? 0;
+            const length = (ent as any).length ?? 0;
+            const segment = text.substr(offset, length).toLowerCase();
+            if (self.usernameLower && segment === "@" + self.usernameLower) return true;
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
+  // Reply check: if user replied to one of our (outgoing) messages
+  try {
+    // Some libraries set message.mentioned when you're mentioned; accept it if present
+    if ((message as any)?.mentioned === true) return true;
+
+    const hasReply = !!(message?.replyToMsgId || message?.replyTo?.replyToMsgId || message?.isReply);
+    if (hasReply && typeof message.getReplyMessage === "function") {
+      const replied = await message.getReplyMessage();
+      if (replied && replied.out === true) return true;
+    }
+  } catch { }
+
+  return false;
+}
+
 export type LLMContextEntry = {
   role: "assistant" | "system" | "user";
   content: string;
@@ -171,6 +294,27 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   const senderIdString = senderId.toString();
   console.log(`Received message from ${senderIdString}: "${messageText}"`);
 
+  // Only respond in private chats, or in groups when explicitly mentioned or replied to
+  try {
+    const allowed = await shouldRespondInContext(message, client);
+    if (!allowed) {
+      if (isPeerChatOrChannel(message?.peerId)) {
+        console.log(
+          `Skipping group message from ${senderIdString}: not mentioned or not a reply`
+        );
+      }
+      return;
+    }
+  } catch {
+    // On any detection error, default to not responding in group contexts
+    if (!isPeerUser(message?.peerId)) {
+      console.log(
+        `Skipping group message from ${senderIdString}: mention/reply detection error`
+      );
+      return;
+    }
+  }
+
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -244,10 +388,12 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   // Phase 3: send reply and stop typing
   try {
-    await client.sendMessage(inputPeer || message.peerId, {
-      message: replyText,
-      //replyTo: (message as any).id,
-    });
+    const isGroupContext = isPeerChatOrChannel(message?.peerId);
+    const sendOptions: any = { message: replyText };
+    if (isGroupContext) {
+      sendOptions.replyTo = (message as any).id;
+    }
+    await client.sendMessage(inputPeer || message.peerId, sendOptions);
 
     console.log(`Replied to ${senderIdString}: "${replyText}"`);
   } catch (error) {
@@ -255,14 +401,16 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
     // Fallback: try using the API directly
     try {
-      await client.invoke(
-        new Api.messages.SendMessage({
-          peer: inputPeer || message.peerId,
-          message: replyText,
-          // replyTo: new Api.InputReplyToMessage({ replyToMsgId: message.id }),
-          randomId: bigInt(Math.floor(Math.random() * 1e16)),
-        })
-      );
+      const isGroupContext = isPeerChatOrChannel(message?.peerId);
+      const sendParams: any = {
+        peer: inputPeer || message.peerId,
+        message: replyText,
+        randomId: bigInt(Math.floor(Math.random() * 1e16)),
+      };
+      if (isGroupContext) {
+        sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
+      }
+      await client.invoke(new Api.messages.SendMessage(sendParams));
       console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);
