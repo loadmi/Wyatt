@@ -188,7 +188,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   let llmContext: LLMContextEntry[] = [];
   llmContext = convertContextToLLM(context, appConfig.systemPrompt);
 
-  console.log("Context:", llmContext);
+  // console.log("Context:", llmContext);
 
 
   const replyText = await getResponse(llmContext) || "Ttyl xoxo";
