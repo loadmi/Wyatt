@@ -199,7 +199,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   let llmContext: LLMContextEntry[] = [];
   llmContext = convertContextToLLM(context);
 
-  console.log("Context:", llmContext);
+  // console.log("Context:", llmContext);
 
   let convoState = conversations.get(senderIdString);
   if (!convoState) {
