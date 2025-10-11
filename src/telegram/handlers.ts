@@ -120,9 +120,9 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
           randomId: bigInt(Math.floor(Math.random() * 1e16)),
         })
       );
-      console.log(`�o. Replied via API to ${senderIdString}: "${replyText}"`);
+      console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
     } catch (apiError) {
-      console.error("�?O API fallback also failed:", apiError);
+      console.error("API fallback also failed:", apiError);
     }
   } finally {
     stopTyping();
