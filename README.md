@@ -79,6 +79,7 @@ scam-bait-bot-ts/
 
 - **TypeScript:** Full type safety and better development experience
 - **Web Interface:** Easy-to-use control panel for starting/stopping the bot
+- **Metrics Dashboard:** Real-time telemetry with message throughput, provider health, and contact leaderboard
 - **Conversation Flow:** Predefined responses to engage with potential scammers
 - **Human-like Behavior:** Typing indicators and random delays
 - **Session Management:** Secure session storage and reuse
@@ -119,8 +120,20 @@ OPENROUTER_MODEL=google/gemini-2.0-flash-001
 ## API Endpoints
 
 - `GET /api/status` - Get bot status
+- `GET /api/metrics` - Retrieve the current runtime metrics snapshot
 - `POST /api/start` - Start the bot
 - `POST /api/stop` - Stop the bot
+
+## Live Metrics Dashboard
+
+The control panel now surfaces operational telemetry above the activity log:
+
+- **Totals cards**: Uptime, unique conversation count, inbound/outbound message totals, and rolling average response delay.
+- **Throughput chart**: Per-minute inbound/outbound volume for the past hour.
+- **Provider breakdown**: Doughnut chart summarizing LLM provider usage with success rates.
+- **Recent contacts table**: Top contacts sorted by last interaction, including message counts and last-seen time.
+
+Metrics are refreshed automatically every few seconds via `GET /api/metrics`, which is also available for external dashboards if you wish to build additional tooling.
 
 ## License
 

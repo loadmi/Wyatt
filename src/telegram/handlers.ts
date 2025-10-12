@@ -4,6 +4,7 @@ import { Api } from "telegram";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
+import { recordInbound, recordOutbound } from "../metrics";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -315,6 +316,18 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     }
   }
 
+  recordInbound(senderIdString);
+  const composeStartedAt = Date.now();
+  let outboundRecorded = false;
+  const markOutbound = () => {
+    if (outboundRecorded) {
+      return;
+    }
+    outboundRecorded = true;
+    const latencyMs = Date.now() - composeStartedAt;
+    recordOutbound(senderIdString, latencyMs);
+  };
+
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -394,6 +407,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       sendOptions.replyTo = (message as any).id;
     }
     await client.sendMessage(inputPeer || message.peerId, sendOptions);
+    markOutbound();
 
     console.log(`Replied to ${senderIdString}: "${replyText}"`);
   } catch (error) {
@@ -411,6 +425,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
       }
       await client.invoke(new Api.messages.SendMessage(sendParams));
+      markOutbound();
       console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);

@@ -58,7 +58,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
+            max-width: 1100px;
             margin: 0 auto;
             padding: 20px;
             background-color: var(--bg);
@@ -296,6 +296,97 @@
         .provider-select:focus, .model-select:focus {
             outline: 2px solid #2563eb;
         }
+
+        .metrics-section {
+            margin: 30px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .metrics-section h2 {
+            margin: 0;
+            color: var(--heading);
+            font-size: 24px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            opacity: 0.7;
+        }
+
+        .metric-value {
+            font-size: 26px;
+            font-weight: 600;
+        }
+
+        .metrics-charts {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        }
+
+        .chart-card, .metrics-table-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .chart-card h3, .metrics-table-card h3 {
+            margin: 0 0 12px 0;
+            color: var(--heading);
+            font-size: 18px;
+        }
+
+        .chart-card canvas {
+            width: 100%;
+            min-height: 260px;
+        }
+
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .metrics-table th, .metrics-table td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--log-border);
+            font-size: 14px;
+        }
+
+        .metrics-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .metrics-table tbody tr:hover {
+            background-color: rgba(37, 99, 235, 0.12);
+        }
+
+        @media (max-width: 900px) {
+            .metrics-charts {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 
@@ -358,11 +449,66 @@
             <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
         </div>
 
+        <div class="metrics-section" aria-live="polite">
+            <h2>Live Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <span class="metric-label">Uptime</span>
+                    <span class="metric-value" id="metricsUptime">--</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">Unique Conversations</span>
+                    <span class="metric-value" id="metricsConversations">--</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">Inbound Messages</span>
+                    <span class="metric-value" id="metricsInbound">--</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">Outbound Messages</span>
+                    <span class="metric-value" id="metricsOutbound">--</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">Avg Response</span>
+                    <span class="metric-value" id="metricsResponse">--</span>
+                </div>
+            </div>
+
+            <div class="metrics-charts">
+                <div class="chart-card">
+                    <h3>Message Throughput (per minute)</h3>
+                    <canvas id="metricsThroughputChart" aria-label="Message throughput chart" role="img"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>LLM Provider Usage</h3>
+                    <canvas id="metricsProviderChart" aria-label="LLM provider breakdown" role="img"></canvas>
+                </div>
+            </div>
+
+            <div class="metrics-table-card">
+                <h3>Recent Contacts</h3>
+                <table class="metrics-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Contact</th>
+                            <th scope="col">Inbound</th>
+                            <th scope="col">Outbound</th>
+                            <th scope="col">Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsContactsBody">
+                        <tr><td colspan="4">No data yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="log" id="log">
             <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-S+gsSUYpETmSCiOzRgYge2xvvjBlLTDWQpuXuaZFf9d1MwVVG3c8bMpiPqteBxaf" crossorigin="anonymous"></script>
     <script src="script.js"></script>
 </body>
 

@@ -1,4 +1,5 @@
 import { appConfig } from "../config";
+import { recordLLMRequest } from "../metrics";
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -163,6 +164,7 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
   }
   console.log('[LLM] Request primary response');
   const first = await callProvider(toSend);
+  recordLLMRequest(provider, first.ok);
   if (first.ok && first.text) {
     console.log(`[LLM] Final: primary response`);
     return first.text;
@@ -183,6 +185,7 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
 
   console.log('[LLM] Request: generic');
   const second = await callProvider(genericMessages);
+  recordLLMRequest(provider, second.ok);
   if (second.ok && second.text) {
     console.log(`[LLM] Final: generic response`);
     return second.text;

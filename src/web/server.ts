@@ -2,6 +2,7 @@
 import express, { Express, Request, Response } from "express";
 import path from "path";
 import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
+import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
 import { availableJsonFiles } from "../llm/personas/personalities";
@@ -18,6 +19,10 @@ export function startWebServer(): void {
 
   app.get("/api/status", (req: Request, res: Response) => {
     res.json(getStatus());
+  });
+
+  app.get("/api/metrics", (req: Request, res: Response) => {
+    res.json(getSnapshot());
   });
 
   app.post("/api/start", async (req: Request, res: Response) => {

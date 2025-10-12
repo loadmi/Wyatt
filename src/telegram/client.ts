@@ -7,6 +7,7 @@ import { NewMessage } from "telegram/events";
 // @ts-ignore - input module doesn't have types
 import input from "input";
 import { messageHandler } from "./handlers";
+import { botStarted, botStopped } from "../metrics";
 
 // Validate environment variables
 if (!process.env.API_ID || !process.env.API_HASH) {
@@ -136,6 +137,7 @@ export async function startBot(): Promise<ControlResponse> {
     client.addEventHandler(messageHandler, messageEvent);
     isRunning = true;
     console.log("Bot started and is listening for messages.");
+    botStarted();
     return { success: true, message: "Bot started successfully." };
   } catch (error) {
     console.error("Failed to start bot:", error);
@@ -156,6 +158,7 @@ export async function stopBot(): Promise<ControlResponse> {
     isRunning = false;
     client = null as any; // Reset client reference
     console.log("✅ Bot stopped successfully.");
+    botStopped();
     return { success: true, message: "Bot stopped successfully." };
   } catch (error) {
     console.error("Failed to stop bot:", error);
@@ -235,6 +238,7 @@ export async function startBotNonInteractive(): Promise<ControlResponse> {
     messageEvent = new NewMessage({});
     client.addEventHandler(messageHandler, messageEvent);
     isRunning = true;
+    botStarted();
     return { success: true, message: "Bot started using existing session." };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
