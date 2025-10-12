@@ -47,6 +47,14 @@ npm run build
 npm start
 ```
 
+## Testing
+
+Run the TypeScript compiler to ensure the project builds without type errors:
+
+```bash
+npm run build
+```
+
 ## Project Structure
 
 ```
