@@ -87,6 +87,27 @@ In addition, general behavior timings are centralized in `src/config.ts` and can
 
 If not set, sensible defaults are used. Edit `src/config.ts` if you prefer to hardcode different defaults.
 
+### LLM Provider
+
+The bot supports two LLM providers:
+
+- `Pollinations` (default)
+- `OpenRouter`
+
+Use the dashboard to choose the provider; if `OpenRouter` is selected, you can also choose the model. To enable OpenRouter, add the following to your `.env`:
+
+```
+OPENROUTER_API_KEY=your_api_key_here
+```
+
+Optional environment defaults:
+
+```
+# Default provider and model (can be changed in the dashboard)
+LLM_PROVIDER=openrouter
+OPENROUTER_MODEL=google/gemini-2.0-flash-001
+```
+
 ## API Endpoints
 
 - `GET /api/status` - Get bot status

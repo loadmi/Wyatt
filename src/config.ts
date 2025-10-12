@@ -27,6 +27,9 @@ const config = {
   // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
   typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
   systemPrompt: JSON.stringify(granny),
+  // LLM provider configuration
+  llmProvider: (process.env.LLM_PROVIDER as 'pollinations' | 'openrouter') || 'openrouter',
+  openrouterModel: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
 };
 
 

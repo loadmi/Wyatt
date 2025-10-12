@@ -278,6 +278,24 @@
         .persona-select:focus {
             outline: 2px solid #2563eb;
         }
+        .llm-selector { 
+            margin: 20px 0; 
+            text-align: center; 
+        }
+        .provider-select, .model-select {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-left: 10px;
+            width: 250px;
+            cursor: pointer;
+        }
+        .provider-select:focus, .model-select:focus {
+            outline: 2px solid #2563eb;
+        }
     </style>
 </head>
 
@@ -318,6 +336,20 @@
             <label for="personaSelect">Bot Personality:</label>
             <select id="personaSelect" class="persona-select">
                 <option value="">Loading personalities...</option>
+            </select>
+        </div>
+
+        <div class="llm-selector">
+            <label for="providerSelect">LLM Provider:</label>
+            <select id="providerSelect" class="provider-select">
+                <option value="pollinations">Pollinations</option>
+                <option value="openrouter">OpenRouter</option>
+            </select>
+        </div>
+        <div class="llm-selector" id="openrouterModelRow" style="display:none">
+            <label for="openrouterModelSelect">OpenRouter Model:</label>
+            <select id="openrouterModelSelect" class="model-select">
+                <option value="">Loading models...</option>
             </select>
         </div>
 
