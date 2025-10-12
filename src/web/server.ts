@@ -4,8 +4,6 @@ import path from "path";
 import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
 
 import { appConfig, setConfig } from "../config";
-// Add JSON body parser middleware
-import bodyParser from "body-parser";
 import { availableJsonFiles } from "../llm/personas/personalities";
 
 const app: Express = express();
@@ -16,7 +14,7 @@ export function startWebServer(): void {
   app.use(express.static(path.join(__dirname, "../../public")));
 
   // Add JSON body parser middleware
-  app.use(bodyParser.json());
+  app.use(express.json());
 
   app.get("/api/status", (req: Request, res: Response) => {
     res.json(getStatus());
