@@ -299,6 +299,17 @@
             color: var(--heading);
         }
 
+        /* Ensure charts have a stable height to avoid resize feedback loops */
+        .chart-container {
+            position: relative;
+            height: 180px; /* fixed chart drawing area */
+        }
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important; /* let Chart.js fill the container */
+            display: block;
+        }
+
         .leaderboard-table {
             width: 100%;
             border-collapse: collapse;
@@ -477,11 +488,15 @@
             <div class="metrics-visuals">
                 <div class="chart-card">
                     <h3>Message Throughput</h3>
-                    <canvas id="throughputChart" height="180" aria-label="Message throughput over time" role="img"></canvas>
+                    <div class="chart-container">
+                        <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                    </div>
                 </div>
                 <div class="chart-card">
                     <h3>LLM Provider Breakdown</h3>
-                    <canvas id="providerChart" height="180" aria-label="LLM provider request distribution" role="img"></canvas>
+                    <div class="chart-container">
+                        <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                    </div>
                 </div>
             </div>
 
