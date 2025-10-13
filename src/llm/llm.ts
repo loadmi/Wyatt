@@ -1,4 +1,5 @@
 import { appConfig } from "../config";
+import { recordLLMRequest } from "../metrics";
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -127,11 +128,15 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
 async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; status: number; text: string }> {
   const cfg = appConfig();
   const provider = (cfg as any).llmProvider as 'pollinations' | 'openrouter' | undefined;
+  let result: { ok: boolean; status: number; text: string };
   if (provider === 'openrouter') {
     const model = (cfg as any).openrouterModel as string | undefined;
-    return callOpenRouter(messages, model || 'google/gemini-2.0-flash-001');
+    result = await callOpenRouter(messages, model || 'google/gemini-2.0-flash-001');
+  } else {
+    result = await callPollinations(messages);
   }
-  return callPollinations(messages);
+  recordLLMRequest(provider || 'pollinations', result.ok);
+  return result;
 }
 
 export async function getResponse(messages: ChatMessage[]): Promise<string> {

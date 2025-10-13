@@ -13,6 +13,62 @@ function updateThemeLabel(labelEl, theme) {
     if (!labelEl) return;
     labelEl.textContent = theme === 'dark' ? 'Dark' : 'Light';
 }
+
+function withAlpha(color, alpha) {
+    const trimmed = (color || '').trim();
+    if (!trimmed) return `rgba(0, 0, 0, ${alpha})`;
+    if (trimmed.startsWith('#')) {
+        let hex = trimmed.slice(1);
+        if (hex.length === 3) {
+            hex = hex.split('').map(ch => ch + ch).join('');
+        }
+        const num = parseInt(hex, 16);
+        if (!Number.isNaN(num)) {
+            const r = (num >> 16) & 255;
+            const g = (num >> 8) & 255;
+            const b = num & 255;
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+    }
+    if (trimmed.startsWith('rgb')) {
+        return trimmed.replace(/rgba?\(([^)]+)\)/, (_, body) => {
+            const parts = body.split(',').map(part => part.trim());
+            parts[3] = alpha.toString();
+            return `rgba(${parts.join(', ')})`;
+        });
+    }
+    return trimmed;
+}
+
+function formatDuration(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) return '—';
+    const totalSeconds = Math.floor(ms / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0 || parts.length) parts.push(`${hours}h`);
+    if (minutes > 0 || parts.length) parts.push(`${minutes}m`);
+    if (!parts.length) parts.push(`${seconds}s`);
+    return parts.join(' ');
+}
+
+function formatRelativeTime(timestamp) {
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return '—';
+    const diff = Date.now() - timestamp;
+    if (diff < 0) return 'just now';
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
 class BotController {
     constructor() {
         this.startBtn = document.getElementById('startBtn');
@@ -23,6 +79,23 @@ class BotController {
         this.providerSelect = document.getElementById('providerSelect');
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
         this.openrouterModelRow = document.getElementById('openrouterModelRow');
+        this.metricsTimestamp = document.getElementById('metricsTimestamp');
+        this.metricCards = {
+            uptime: document.getElementById('metricUptime'),
+            contacts: document.getElementById('metricContacts'),
+            inbound: document.getElementById('metricInbound'),
+            outbound: document.getElementById('metricOutbound'),
+            response: document.getElementById('metricResponse'),
+        };
+        this.leaderboardBody = document.getElementById('leaderboardBody');
+        this.throughputCanvas = document.getElementById('throughputChart');
+        this.providerCanvas = document.getElementById('providerChart');
+        this.timelineChart = null;
+        this.providerChart = null;
+        this.providerPalette = ['#60a5fa', '#f472b6', '#34d399', '#facc15', '#a78bfa', '#f97316'];
+        this.numberFormatter = new Intl.NumberFormat();
+        this.metricsInterval = null;
+        this.lastMetricsError = null;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
@@ -41,6 +114,8 @@ class BotController {
 
         // Check status every 5 seconds
         setInterval(() => this.checkStatus(), 5000);
+
+        this.setupMetricsDashboard();
     }
 
     async checkStatus() {
@@ -293,6 +368,275 @@ class BotController {
             this.log('❌ Error changing personality: ' + error.message);
         }
     }
+
+    setupMetricsDashboard() {
+        this.initializeCharts();
+        this.refreshMetrics();
+        this.metricsInterval = setInterval(() => this.refreshMetrics(), 5000);
+    }
+
+    initializeCharts() {
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js not loaded; skipping chart initialization');
+            return;
+        }
+        const colors = this.getThemeColors();
+        if (this.throughputCanvas && this.throughputCanvas.getContext) {
+            const ctx = this.throughputCanvas.getContext('2d');
+            if (ctx) {
+                this.timelineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Inbound',
+                                data: [],
+                                tension: 0.35,
+                                fill: true,
+                                borderWidth: 2,
+                                borderColor: colors.inbound,
+                                backgroundColor: withAlpha(colors.inbound, 0.25),
+                                pointRadius: 0,
+                            },
+                            {
+                                label: 'Outbound',
+                                data: [],
+                                tension: 0.35,
+                                fill: true,
+                                borderWidth: 2,
+                                borderColor: colors.outbound,
+                                backgroundColor: withAlpha(colors.outbound, 0.25),
+                                pointRadius: 0,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                ticks: { color: colors.text },
+                                grid: { color: withAlpha(colors.border, 0.4) },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: { color: colors.text },
+                                grid: { color: withAlpha(colors.border, 0.4) },
+                            },
+                        },
+                        plugins: {
+                            legend: {
+                                labels: { color: colors.text },
+                            },
+                        },
+                    },
+                });
+            }
+        }
+
+        if (this.providerCanvas && this.providerCanvas.getContext) {
+            const ctx = this.providerCanvas.getContext('2d');
+            if (ctx) {
+                this.providerChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                data: [],
+                                backgroundColor: [],
+                                borderColor: [],
+                                borderWidth: 1,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: colors.text },
+                            },
+                        },
+                    },
+                });
+            }
+        }
+    }
+
+    async refreshMetrics() {
+        try {
+            const response = await fetch('/api/metrics', { cache: 'no-store' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            this.updateMetricsUI(data);
+            this.lastMetricsError = null;
+        } catch (error) {
+            if (this.lastMetricsError !== error?.message) {
+                console.warn('Failed to refresh metrics:', error);
+            }
+            this.lastMetricsError = error?.message || 'error';
+            if (this.metricsTimestamp) {
+                this.metricsTimestamp.textContent = 'Last updated: error';
+            }
+        }
+    }
+
+    updateMetricsUI(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return;
+        if (this.metricsTimestamp) {
+            this.metricsTimestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        }
+
+        if (this.metricCards.uptime) {
+            this.metricCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
+        }
+        if (this.metricCards.contacts) {
+            this.metricCards.contacts.textContent = this.numberFormatter.format(snapshot?.totals?.uniqueContacts || 0);
+        }
+        if (this.metricCards.inbound) {
+            this.metricCards.inbound.textContent = this.numberFormatter.format(snapshot?.totals?.inbound || 0);
+        }
+        if (this.metricCards.outbound) {
+            this.metricCards.outbound.textContent = this.numberFormatter.format(snapshot?.totals?.outbound || 0);
+        }
+        if (this.metricCards.response) {
+            const avg = snapshot?.responseTime?.averageMs;
+            this.metricCards.response.textContent = Number.isFinite(avg) ? `${Math.round(avg)} ms` : '—';
+        }
+
+        this.updateTimelineChart(snapshot.timeline || []);
+        this.updateProviderChart(snapshot.providers || []);
+        this.updateLeaderboard(snapshot.contacts || []);
+    }
+
+    updateTimelineChart(buckets) {
+        if (!this.timelineChart) return;
+        if (!Array.isArray(buckets) || buckets.length === 0) {
+            this.timelineChart.data.labels = [''];
+            this.timelineChart.data.datasets[0].data = [0];
+            this.timelineChart.data.datasets[1].data = [0];
+        } else {
+            const labels = buckets.map(bucket => new Date(bucket.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            const inbound = buckets.map(bucket => bucket.inbound || 0);
+            const outbound = buckets.map(bucket => bucket.outbound || 0);
+            this.timelineChart.data.labels = labels;
+            this.timelineChart.data.datasets[0].data = inbound;
+            this.timelineChart.data.datasets[1].data = outbound;
+        }
+        this.timelineChart.update('none');
+    }
+
+    updateProviderChart(providers) {
+        if (!this.providerChart) return;
+        const colors = this.getThemeColors();
+        let labels = [];
+        let data = [];
+        let backgrounds = [];
+        if (!Array.isArray(providers) || providers.length === 0) {
+            labels = ['No data'];
+            data = [1];
+            const fallbackColor = withAlpha(colors.text, 0.15);
+            backgrounds = [fallbackColor];
+        } else {
+            labels = providers.map(p => `${p.provider} (${p.requests - p.failures}/${p.requests})`);
+            data = providers.map(p => p.requests || 0);
+            backgrounds = providers.map((_, index) => this.providerPalette[index % this.providerPalette.length]);
+        }
+        const dataset = this.providerChart.data.datasets[0];
+        this.providerChart.data.labels = labels;
+        dataset.data = data;
+        dataset.backgroundColor = backgrounds;
+        dataset.borderColor = backgrounds.map(color => withAlpha(color, 0.9));
+        this.providerChart.update('none');
+    }
+
+    updateLeaderboard(contacts) {
+        if (!this.leaderboardBody) return;
+        this.leaderboardBody.innerHTML = '';
+        if (!Array.isArray(contacts) || contacts.length === 0) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 4;
+            cell.textContent = 'No data yet';
+            row.appendChild(cell);
+            this.leaderboardBody.appendChild(row);
+            return;
+        }
+
+        const topContacts = contacts.slice(0, 10);
+        topContacts.forEach(contact => {
+            const row = document.createElement('tr');
+            const idCell = document.createElement('td');
+            const inboundCell = document.createElement('td');
+            const outboundCell = document.createElement('td');
+            const lastSeenCell = document.createElement('td');
+
+            const contactId = String(contact.contactId || 'unknown');
+            idCell.textContent = contactId.length > 20 ? contactId.slice(0, 17) + '…' : contactId;
+            idCell.title = contactId;
+            inboundCell.textContent = this.numberFormatter.format(contact.inbound || 0);
+            outboundCell.textContent = this.numberFormatter.format(contact.outbound || 0);
+            lastSeenCell.textContent = formatRelativeTime(contact.lastSeenAt);
+            if (Number.isFinite(contact.lastSeenAt)) {
+                lastSeenCell.title = new Date(contact.lastSeenAt).toLocaleString();
+            }
+
+            row.appendChild(idCell);
+            row.appendChild(inboundCell);
+            row.appendChild(outboundCell);
+            row.appendChild(lastSeenCell);
+            this.leaderboardBody.appendChild(row);
+        });
+    }
+
+    getThemeColors() {
+        const styles = getComputedStyle(document.documentElement);
+        const text = styles.getPropertyValue('--text').trim() || '#e5e7eb';
+        const border = styles.getPropertyValue('--log-border').trim() || 'rgba(148, 163, 184, 0.4)';
+        const inbound = styles.getPropertyValue('--button-start-bg').trim() || '#1f7a31';
+        const outbound = styles.getPropertyValue('--button-stop-bg').trim() || '#a72a39';
+        return { text, border, inbound, outbound };
+    }
+
+    refreshChartTheme() {
+        const colors = this.getThemeColors();
+        if (this.timelineChart) {
+            const inboundDataset = this.timelineChart.data.datasets[0];
+            const outboundDataset = this.timelineChart.data.datasets[1];
+            inboundDataset.borderColor = colors.inbound;
+            inboundDataset.backgroundColor = withAlpha(colors.inbound, 0.25);
+            outboundDataset.borderColor = colors.outbound;
+            outboundDataset.backgroundColor = withAlpha(colors.outbound, 0.25);
+
+            if (this.timelineChart.options?.scales?.x) {
+                this.timelineChart.options.scales.x.ticks = this.timelineChart.options.scales.x.ticks || {};
+                this.timelineChart.options.scales.x.ticks.color = colors.text;
+                this.timelineChart.options.scales.x.grid = this.timelineChart.options.scales.x.grid || {};
+                this.timelineChart.options.scales.x.grid.color = withAlpha(colors.border, 0.4);
+            }
+            if (this.timelineChart.options?.scales?.y) {
+                this.timelineChart.options.scales.y.ticks = this.timelineChart.options.scales.y.ticks || {};
+                this.timelineChart.options.scales.y.ticks.color = colors.text;
+                this.timelineChart.options.scales.y.grid = this.timelineChart.options.scales.y.grid || {};
+                this.timelineChart.options.scales.y.grid.color = withAlpha(colors.border, 0.4);
+            }
+            if (this.timelineChart.options?.plugins?.legend?.labels) {
+                this.timelineChart.options.plugins.legend.labels.color = colors.text;
+            }
+            this.timelineChart.update('none');
+        }
+        if (this.providerChart) {
+            if (this.providerChart.options?.plugins?.legend?.labels) {
+                this.providerChart.options.plugins.legend.labels.color = colors.text;
+            }
+            this.providerChart.update('none');
+        }
+    }
 }
 
 // Initialize the controller when the page loads
@@ -304,6 +648,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     applyTheme(theme);
 
+    const controller = new BotController();
+
     if (toggle) {
         toggle.checked = theme === 'dark';
         updateThemeLabel(label, theme);
@@ -312,10 +658,11 @@ document.addEventListener('DOMContentLoaded', () => {
             applyTheme(newTheme);
             updateThemeLabel(label, newTheme);
             try { localStorage.setItem('theme', newTheme); } catch (e) { }
+            controller.refreshChartTheme();
         });
     }
 
-    new BotController();
+    controller.refreshChartTheme();
 });
 
 

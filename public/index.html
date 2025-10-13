@@ -236,6 +236,105 @@
             cursor: not-allowed;
         }
 
+        .metrics-section {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .metrics-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--heading);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+        }
+
+        .metric-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            box-shadow: 0 2px 6px var(--shadow);
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--heading);
+            opacity: 0.75;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .metrics-visuals {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-card, .leaderboard-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 6px var(--shadow);
+        }
+
+        .chart-card h3, .leaderboard-card h3 {
+            margin: 0 0 10px;
+            font-size: 16px;
+            color: var(--heading);
+        }
+
+        /* Ensure charts have a stable height to avoid resize feedback loops */
+        .chart-container {
+            position: relative;
+            height: 180px; /* fixed chart drawing area */
+        }
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important; /* let Chart.js fill the container */
+            display: block;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .leaderboard-table th,
+        .leaderboard-table td {
+            padding: 8px 6px;
+            border-bottom: 1px solid var(--log-border);
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .leaderboard-table th {
+            font-weight: 600;
+            color: var(--heading);
+            opacity: 0.8;
+        }
+
+        .leaderboard-table tr:last-child td {
+            border-bottom: none;
+        }
+
         .log {
             background-color: var(--log-bg);
             border: 1px solid var(--log-border);
@@ -358,11 +457,75 @@
             <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
         </div>
 
+        <section class="metrics-section" aria-label="Bot metrics dashboard">
+            <div class="metrics-header">
+                <h2>Metrics Overview</h2>
+                <small id="metricsTimestamp">Last updated: --</small>
+            </div>
+            <div class="metrics-grid" role="list">
+                <div class="metric-card" role="listitem">
+                    <span class="metric-label">Uptime</span>
+                    <span class="metric-value" id="metricUptime">--</span>
+                </div>
+                <div class="metric-card" role="listitem">
+                    <span class="metric-label">Unique Contacts</span>
+                    <span class="metric-value" id="metricContacts">--</span>
+                </div>
+                <div class="metric-card" role="listitem">
+                    <span class="metric-label">Inbound Messages</span>
+                    <span class="metric-value" id="metricInbound">--</span>
+                </div>
+                <div class="metric-card" role="listitem">
+                    <span class="metric-label">Outbound Messages</span>
+                    <span class="metric-value" id="metricOutbound">--</span>
+                </div>
+                <div class="metric-card" role="listitem">
+                    <span class="metric-label">Avg Response Delay</span>
+                    <span class="metric-value" id="metricResponse">--</span>
+                </div>
+            </div>
+
+            <div class="metrics-visuals">
+                <div class="chart-card">
+                    <h3>Message Throughput</h3>
+                    <div class="chart-container">
+                        <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>LLM Provider Breakdown</h3>
+                    <div class="chart-container">
+                        <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="leaderboard-card">
+                <h3>Recent Contacts</h3>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Contact</th>
+                            <th scope="col">Inbound</th>
+                            <th scope="col">Outbound</th>
+                            <th scope="col">Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody">
+                        <tr>
+                            <td colspan="4">No data yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <div class="log" id="log">
             <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 
