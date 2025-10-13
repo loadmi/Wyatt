@@ -4,6 +4,7 @@ import { Api } from "telegram";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
+import { recordInbound, recordOutbound } from "../metrics";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -315,6 +316,8 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     }
   }
 
+  recordInbound(senderIdString);
+
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -337,6 +340,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   console.log("Context:", llmContext);
 
 
+  const composeStartedAt = Date.now();
   const replyText = await getResponse(llmContext) || "Ttyl xoxo";
 
   // inputPeer already resolved above; if not available, we still try to proceed
@@ -387,6 +391,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   await sleep(typingFor);
 
   // Phase 3: send reply and stop typing
+  let outboundRecorded = false;
   try {
     const isGroupContext = isPeerChatOrChannel(message?.peerId);
     const sendOptions: any = { message: replyText };
@@ -395,6 +400,10 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     }
     await client.sendMessage(inputPeer || message.peerId, sendOptions);
 
+    if (!outboundRecorded) {
+      recordOutbound(senderIdString, Date.now() - composeStartedAt);
+      outboundRecorded = true;
+    }
     console.log(`Replied to ${senderIdString}: "${replyText}"`);
   } catch (error) {
     console.error("Failed to send message:", error);
@@ -411,6 +420,10 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
       }
       await client.invoke(new Api.messages.SendMessage(sendParams));
+      if (!outboundRecorded) {
+        recordOutbound(senderIdString, Date.now() - composeStartedAt);
+        outboundRecorded = true;
+      }
       console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);
