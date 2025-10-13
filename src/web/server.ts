@@ -5,6 +5,7 @@ import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegra
 import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
+import { loadPersistedState } from "../persistence";
 import { availableJsonFiles } from "../llm/personas/personalities";
 
 const app: Express = express();
@@ -16,6 +17,36 @@ export function startWebServer(): void {
 
   // Add JSON body parser middleware
   app.use(express.json());
+
+  async function applyPersistedConfig() {
+    try {
+      const persisted = loadPersistedState();
+      const allowedProviders = ["pollinations", "openrouter"] as const;
+      const next = { ...appConfig() } as any;
+      // Prefer directly persisted systemPrompt to avoid runtime JSON import issues
+      if (typeof persisted.systemPrompt === 'string' && persisted.systemPrompt.trim().length > 0) {
+        next.systemPrompt = persisted.systemPrompt;
+        if (persisted.currentPersona) next.currentPersona = persisted.currentPersona;
+      } else if (persisted.currentPersona && availableJsonFiles.includes(persisted.currentPersona)) {
+        try {
+          const importedPersona = await import(`../llm/personas/${persisted.currentPersona}`, { with: { type: "json" } }).then(mod => mod.default);
+          next.systemPrompt = JSON.stringify(importedPersona);
+          next.currentPersona = persisted.currentPersona;
+        } catch (e) {
+          console.warn('Failed to load persisted persona, falling back:', (e as any)?.message || e);
+        }
+      }
+      if (persisted.llmProvider && allowedProviders.includes(persisted.llmProvider)) {
+        next.llmProvider = persisted.llmProvider;
+        if (persisted.llmProvider === 'openrouter' && typeof persisted.openrouterModel === 'string' && persisted.openrouterModel.trim()) {
+          next.openrouterModel = persisted.openrouterModel.trim();
+        }
+      }
+      setConfig(next);
+    } catch (e) {
+      console.warn('Failed to apply persisted state at startup:', (e as any)?.message || e);
+    }
+  }
 
   app.get("/api/status", (req: Request, res: Response) => {
     res.json(getStatus());
@@ -45,15 +76,16 @@ export function startWebServer(): void {
       return res.status(400).json({ success: false, message: "Invalid persona." });
     }
     const importedPersona = await import(`../llm/personas/${persona}`, { with: { type: "json" } }).then(mod => mod.default);
-    newConfig.systemPrompt = JSON.stringify(importedPersona);
-    setConfig(newConfig);
+    (newConfig as any).systemPrompt = JSON.stringify(importedPersona);
+    (newConfig as any).currentPersona = persona;
+    setConfig(newConfig as any);
     res.status(201).json({ success: true, persona });
   });
 
   app.get("/api/config/personas", async (req: Request, res: Response) => {
-    const newConfig = appConfig();
+    const cfg = appConfig() as any;
     const availablePersonalities = availableJsonFiles;
-    res.json({ available: availablePersonalities, current: newConfig.systemPrompt });
+    res.json({ available: availablePersonalities, current: cfg.currentPersona || 'granny.json' });
   });
 
   // LLM provider + model configuration
@@ -94,6 +126,9 @@ export function startWebServer(): void {
 
   app.listen(PORT, async () => {
     console.log(`Web interface running at http://localhost:${PORT}`);
+
+    // Ensure persisted state is applied before any auto-start
+    await applyPersistedConfig();
 
     // Attempt to auto-start the bot if a valid session is present.
     const hasSession = !!(process.env.SESSION_STRING && process.env.SESSION_STRING.trim());

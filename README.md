@@ -136,6 +136,15 @@ Metrics refresh automatically every few seconds—no page reload required.
 - `POST /api/start` - Start the bot
 - `POST /api/stop` - Stop the bot
 
+## Persistence
+
+The dashboard settings are saved to a local JSON file so that choices survive restarts:
+
+- File: `data/config.json`
+- Persisted keys: `currentPersona`, `llmProvider`, `openrouterModel`
+
+On startup, the server loads this file and applies values (validated against available personas and supported providers/models). Editing or deleting the file resets to defaults.
+
 ## License
 
 ISC

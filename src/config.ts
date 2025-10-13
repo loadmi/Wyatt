@@ -27,6 +27,8 @@ const config = {
   // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
   typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
   systemPrompt: JSON.stringify(granny),
+  // Track currently selected persona filename for dashboard persistence
+  currentPersona: 'granny.json',
   // LLM provider configuration
   llmProvider: (process.env.LLM_PROVIDER as 'pollinations' | 'openrouter') || 'openrouter',
   openrouterModel: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
@@ -49,5 +51,17 @@ export function sleep(ms: number): Promise<void> {
 export function setConfig(newConfig: Partial<typeof config>): void {
   Object.assign(config, newConfig);
   console.log("Config Updated");
-
+  // Persist only dashboard-configurable values
+  try {
+    // Lazy import to avoid circular deps at module load time
+    const { savePersistedState } = require('./persistence');
+    savePersistedState({
+      currentPersona: (config as any).currentPersona,
+      llmProvider: (config as any).llmProvider,
+      openrouterModel: (config as any).openrouterModel,
+      systemPrompt: (config as any).systemPrompt,
+    });
+  } catch (e) {
+    console.warn('Failed to persist config:', (e as any)?.message || e);
+  }
 }
