@@ -94,6 +94,8 @@ In addition, general behavior timings are centralized in `src/config.ts` and can
 - `TYPING_DURATION_MS_MIN` / `TYPING_DURATION_MS_MAX` — how long to show typing before replying (default 10000–15000 ms)
 - `TYPING_KEEPALIVE_MS` — how often to refresh the typing indicator (default 4000 ms)
 
+Incoming messages are marked as read by default right before the initial `waitBefore` delay begins.
+
 If not set, sensible defaults are used. Edit `src/config.ts` if you prefer to hardcode different defaults.
 
 ### LLM Provider

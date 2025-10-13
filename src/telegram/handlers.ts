@@ -380,6 +380,23 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     appConfig().waitBeforeTypingMs.min,
     appConfig().waitBeforeTypingMs.max
   );
+  // Mark the incoming message as read right before starting the wait timer
+  try {
+    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
+    const maxId = (message as any)?.id || 0;
+    if (peer && maxId) {
+      await (client as any)
+        .invoke(
+          new Api.messages.ReadHistory({
+            peer,
+            maxId,
+          })
+        )
+        .catch(() => { });
+    }
+  } catch (e) {
+    console.warn("Failed to mark message as read:", (e as any)?.message || e);
+  }
   await sleep(waitBefore);
 
   // Phase 2: show typing for configured duration
