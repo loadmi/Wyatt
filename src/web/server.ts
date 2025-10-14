@@ -1,7 +1,14 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
 import path from "path";
-import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
+import {
+  startBot,
+  stopBot,
+  getStatus,
+  startBotNonInteractive,
+  listGroupChats,
+  sendStealthGroupMessage,
+} from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
@@ -54,6 +61,29 @@ export function startWebServer(): void {
 
   app.get("/api/metrics", (req: Request, res: Response) => {
     res.json(getSnapshot());
+  });
+
+  app.get("/api/groups", async (req: Request, res: Response) => {
+    try {
+      const groups = await listGroupChats();
+      res.json({ groups });
+    } catch (err: any) {
+      const message = err?.message || "Unable to fetch groups";
+      const status = /running/i.test(message) ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/groups/send-stealth", async (req: Request, res: Response) => {
+    const { groupId } = req.body || {};
+    try {
+      const result = await sendStealthGroupMessage(typeof groupId === "string" ? groupId : "");
+      res.status(result.success ? 200 : 400).json(result);
+    } catch (err: any) {
+      const message = err?.message || "Failed to send stealth message";
+      const status = /running/i.test(message) ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
   });
 
   app.post("/api/start", async (req: Request, res: Response) => {

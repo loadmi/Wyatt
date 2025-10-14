@@ -79,6 +79,9 @@ class BotController {
         this.providerSelect = document.getElementById('providerSelect');
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
         this.openrouterModelRow = document.getElementById('openrouterModelRow');
+        this.groupSelect = document.getElementById('groupSelect');
+        this.groupSendBtn = document.getElementById('groupSendBtn');
+        this.groupStatus = document.getElementById('groupStatus');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -96,12 +99,22 @@ class BotController {
         this.numberFormatter = new Intl.NumberFormat();
         this.metricsInterval = null;
         this.lastMetricsError = null;
+        this.botRunning = false;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
         this.personaSelect.addEventListener('change', () => this.changePersona());
         this.providerSelect.addEventListener('change', () => this.changeProvider());
         this.openrouterModelSelect.addEventListener('change', () => this.changeOpenRouterModel());
+        if (this.groupSelect) {
+            this.groupSelect.addEventListener('change', () => this.updateGroupButtonState());
+        }
+        if (this.groupSendBtn) {
+            this.groupSendBtn.addEventListener('click', () => this.sendStealthGroupMessage());
+        }
+
+        this.updateGroupButtonState();
+        this.setGroupStatus('Start the bot to load group chats.');
 
         // Check initial status
         this.checkStatus();
@@ -129,6 +142,8 @@ class BotController {
     }
 
     updateStatus(isRunning) {
+        const wasRunning = this.botRunning;
+        this.botRunning = !!isRunning;
         if (isRunning) {
             this.statusDiv.textContent = 'Status: Running';
             this.statusDiv.className = 'status running';
@@ -139,6 +154,19 @@ class BotController {
             this.statusDiv.className = 'status stopped';
             this.startBtn.disabled = false;
             this.stopBtn.disabled = true;
+        }
+        if (this.groupSelect) {
+            this.groupSelect.disabled = !this.botRunning;
+            if (!this.botRunning) {
+                this.groupSelect.value = '';
+            }
+        }
+        this.updateGroupButtonState();
+        if (this.botRunning && !wasRunning) {
+            this.loadGroups();
+        }
+        if (!this.botRunning) {
+            this.setGroupStatus('Start the bot to load group chats.');
         }
     }
 
@@ -186,6 +214,7 @@ class BotController {
             if (data.success) {
                 this.log('✅ ' + data.message);
                 this.updateStatus(false);
+                this.updateGroupButtonState();
             } else {
                 this.log('❌ ' + data.message);
                 this.stopBtn.disabled = false;
@@ -202,6 +231,124 @@ class BotController {
         logEntry.textContent = `[${timestamp}] ${message}`;
         this.logDiv.appendChild(logEntry);
         this.logDiv.scrollTop = this.logDiv.scrollHeight;
+    }
+
+    setGroupStatus(text) {
+        if (this.groupStatus && typeof text === 'string') {
+            this.groupStatus.textContent = text;
+        }
+    }
+
+    updateGroupButtonState() {
+        if (!this.groupSendBtn) return;
+        const hasSelection = !!(this.groupSelect && this.groupSelect.value);
+        this.groupSendBtn.disabled = !this.botRunning || !hasSelection;
+    }
+
+    async loadGroups() {
+        if (!this.groupSelect) return;
+        if (!this.botRunning) {
+            this.groupSelect.innerHTML = '<option value="">Groups unavailable</option>';
+            this.groupSelect.disabled = true;
+            this.updateGroupButtonState();
+            return;
+        }
+
+        this.groupSelect.disabled = true;
+        this.groupSelect.innerHTML = '<option value="">Loading groups...</option>';
+        this.setGroupStatus('Loading groups...');
+
+        try {
+            const response = await fetch('/api/groups', { cache: 'no-store' });
+            if (!response.ok) {
+                let message = `Failed to load groups (HTTP ${response.status})`;
+                try {
+                    const errData = await response.json();
+                    if (errData && errData.message) {
+                        message = errData.message;
+                    }
+                } catch (e) { }
+                throw new Error(message);
+            }
+
+            const data = await response.json();
+            const groups = Array.isArray(data.groups) ? data.groups : [];
+
+            this.groupSelect.innerHTML = '';
+            if (groups.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No groups found';
+                this.groupSelect.appendChild(option);
+                this.groupSelect.disabled = true;
+                this.setGroupStatus('No eligible group chats available.');
+            } else {
+                groups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = group.id;
+                    option.textContent = group.title || group.id;
+                    if (typeof group.unreadCount === 'number' && group.unreadCount > 0) {
+                        option.textContent += ` (${group.unreadCount} unread)`;
+                    }
+                    this.groupSelect.appendChild(option);
+                });
+                this.groupSelect.disabled = false;
+                this.setGroupStatus(`Loaded ${groups.length} group${groups.length === 1 ? '' : 's'}.`);
+            }
+            this.updateGroupButtonState();
+            this.log(`Group list refreshed (${groups.length} total).`);
+        } catch (error) {
+            this.groupSelect.innerHTML = '<option value="">Groups unavailable</option>';
+            this.groupSelect.disabled = true;
+            this.updateGroupButtonState();
+            const message = error?.message || 'Unknown error while loading groups';
+            this.setGroupStatus(message);
+            this.log('❌ ' + message);
+        }
+    }
+
+    async sendStealthGroupMessage() {
+        if (!this.groupSelect || !this.groupSendBtn) return;
+        const groupId = this.groupSelect.value;
+        if (!groupId) {
+            this.updateGroupButtonState();
+            return;
+        }
+
+        const selectedOption = this.groupSelect.options[this.groupSelect.selectedIndex];
+        const groupLabel = selectedOption ? selectedOption.textContent : groupId;
+
+        this.groupSendBtn.disabled = true;
+        this.log(`Requesting stealth message for group: ${groupLabel}`);
+
+        try {
+            const response = await fetch('/api/groups/send-stealth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groupId })
+            });
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (e) { }
+
+            if (response.ok && data.success) {
+                this.log('✅ ' + (data.message || 'Message sent.'));
+                if (data.generatedText) {
+                    this.log('↳ ' + data.generatedText);
+                }
+                this.setGroupStatus('Last action succeeded at ' + new Date().toLocaleTimeString());
+            } else {
+                const message = data && data.message ? data.message : `Failed to send message (HTTP ${response.status})`;
+                this.log('❌ ' + message);
+                this.setGroupStatus(message);
+            }
+        } catch (error) {
+            this.log('❌ Error sending stealth message: ' + error.message);
+            this.setGroupStatus(error.message);
+        } finally {
+            this.updateGroupButtonState();
+        }
     }
 
     async loadPersonalities() {

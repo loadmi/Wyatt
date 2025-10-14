@@ -395,6 +395,41 @@
         .provider-select:focus, .model-select:focus {
             outline: 2px solid #2563eb;
         }
+        .group-selector {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .group-controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .group-select {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            min-width: 280px;
+            cursor: pointer;
+        }
+        .group-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .group-action-btn {
+            min-width: 200px;
+        }
+        .group-status {
+            display: block;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--heading);
+            opacity: 0.75;
+        }
     </style>
 </head>
 
@@ -450,6 +485,17 @@
             <select id="openrouterModelSelect" class="model-select">
                 <option value="">Loading models...</option>
             </select>
+        </div>
+
+        <div class="group-selector">
+            <label for="groupSelect">Group Broadcast:</label>
+            <div class="group-controls">
+                <select id="groupSelect" class="group-select" disabled>
+                    <option value="">Groups unavailable</option>
+                </select>
+                <button id="groupSendBtn" class="start-btn group-action-btn" disabled>Send Stealth Nudge</button>
+            </div>
+            <small id="groupStatus" class="group-status">Start the bot to load group chats.</small>
         </div>
 
         <div class="controls">

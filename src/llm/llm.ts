@@ -1,7 +1,7 @@
 import { appConfig } from "../config";
 import { recordLLMRequest } from "../metrics";
 
-type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 function looksLikeJsonError(text: string): boolean {
   try {
@@ -137,6 +137,32 @@ async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; sta
   }
   recordLLMRequest(provider || 'pollinations', result.ok);
   return result;
+}
+
+export async function requestCustomCompletion(
+  messages: ChatMessage[],
+  options?: { fallback?: string; maxInputChars?: number; maxSystemChars?: number }
+): Promise<string> {
+  const mi = Number(options?.maxInputChars);
+  const ms = Number(options?.maxSystemChars);
+  const MAX_INPUT_CHARS = Number.isFinite(mi) ? mi : Number(process.env.LLM_MAX_INPUT_CHARS) || 4900;
+  const MAX_SYSTEM_CHARS = Number.isFinite(ms) ? ms : Number(process.env.LLM_MAX_SYSTEM_CHARS) || 4900;
+
+  const provider = ((appConfig() as any).llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  let toSend = messages;
+  if (provider === 'pollinations') {
+    toSend = trimMessagesToLimit(messages, MAX_INPUT_CHARS, MAX_SYSTEM_CHARS);
+  } else {
+    console.log(`[LLM] Custom completion: no trim for provider=${provider}`);
+  }
+
+  const primary = await callProvider(toSend);
+  if (primary.ok && primary.text) {
+    return primary.text;
+  }
+
+  const fallback = options?.fallback ?? 'Hope everyone is doing well.';
+  return fallback;
 }
 
 export async function getResponse(messages: ChatMessage[]): Promise<string> {
