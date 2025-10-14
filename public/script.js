@@ -80,18 +80,22 @@ class BotController {
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
         this.openrouterModelRow = document.getElementById('openrouterModelRow');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
-        this.metricCards = {
-            uptime: document.getElementById('metricUptime'),
-            contacts: document.getElementById('metricContacts'),
-            inbound: document.getElementById('metricInbound'),
-            outbound: document.getElementById('metricOutbound'),
-            response: document.getElementById('metricResponse'),
+        this.metricFields = {
+            uptime: Array.from(document.querySelectorAll('[data-metric="uptime"]')),
+            contacts: Array.from(document.querySelectorAll('[data-metric="contacts"]')),
+            inbound: Array.from(document.querySelectorAll('[data-metric="inbound"]')),
+            outbound: Array.from(document.querySelectorAll('[data-metric="outbound"]')),
+            response: Array.from(document.querySelectorAll('[data-metric="response"]')),
         };
         this.leaderboardBody = document.getElementById('leaderboardBody');
         this.throughputCanvas = document.getElementById('throughputChart');
         this.providerCanvas = document.getElementById('providerChart');
+        this.throughputSparkCanvas = document.getElementById('throughputSparkChart');
+        this.providerMiniCanvas = document.getElementById('providerMiniChart');
         this.timelineChart = null;
         this.providerChart = null;
+        this.timelineSparkChart = null;
+        this.providerMiniChart = null;
         this.providerPalette = ['#60a5fa', '#f472b6', '#34d399', '#facc15', '#a78bfa', '#f97316'];
         this.numberFormatter = new Intl.NumberFormat();
         this.metricsInterval = null;
@@ -99,6 +103,7 @@ class BotController {
         this.groupSelect = document.getElementById('groupSelect');
         this.groupRefreshBtn = document.getElementById('groupRefreshBtn');
         this.groupSendBtn = document.getElementById('groupSendBtn');
+        this.logToggleBtn = document.getElementById('logToggleBtn');
         this.loadingGroups = false;
         this.sendingGroupMessage = false;
         this.botIsRunning = false;
@@ -116,6 +121,9 @@ class BotController {
         }
         if (this.groupSendBtn) {
             this.groupSendBtn.addEventListener('click', () => this.sendGroupSentiment());
+        }
+        if (this.logToggleBtn) {
+            this.logToggleBtn.addEventListener('click', () => this.toggleLog());
         }
 
         // Check initial status
@@ -226,6 +234,24 @@ class BotController {
         logEntry.textContent = `[${timestamp}] ${message}`;
         this.logDiv.appendChild(logEntry);
         this.logDiv.scrollTop = this.logDiv.scrollHeight;
+    }
+
+    toggleLog() {
+        if (!this.logDiv || !this.logToggleBtn) return;
+        const expanded = !this.logDiv.classList.contains('expanded');
+        this.logDiv.classList.toggle('expanded', expanded);
+        this.logToggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        this.logToggleBtn.textContent = expanded ? 'Collapse log' : 'Expand log';
+    }
+
+    updateMetricField(metric, value) {
+        const targets = this.metricFields?.[metric];
+        if (!targets || targets.length === 0) return;
+        targets.forEach(node => {
+            if (node) {
+                node.textContent = value;
+            }
+        });
     }
 
     async loadPersonalities() {
@@ -593,6 +619,46 @@ class BotController {
             }
         }
 
+        if (this.throughputSparkCanvas && this.throughputSparkCanvas.getContext) {
+            const ctx = this.throughputSparkCanvas.getContext('2d');
+            if (ctx) {
+                this.timelineSparkChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Total messages',
+                                data: [],
+                                tension: 0.35,
+                                fill: true,
+                                borderWidth: 2,
+                                borderColor: colors.inbound,
+                                backgroundColor: withAlpha(colors.inbound, 0.2),
+                                pointRadius: 0,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                display: false,
+                            },
+                            y: {
+                                display: false,
+                            },
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false },
+                        },
+                    },
+                });
+            }
+        }
+
         if (this.providerCanvas && this.providerCanvas.getContext) {
             const ctx = this.providerCanvas.getContext('2d');
             if (ctx) {
@@ -618,6 +684,35 @@ class BotController {
                                 labels: { color: colors.text },
                             },
                         },
+                    },
+                });
+            }
+        }
+
+        if (this.providerMiniCanvas && this.providerMiniCanvas.getContext) {
+            const ctx = this.providerMiniCanvas.getContext('2d');
+            if (ctx) {
+                this.providerMiniChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                data: [],
+                                backgroundColor: [],
+                                borderColor: [],
+                                borderWidth: 1,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false },
+                        },
+                        cutout: '70%',
                     },
                 });
             }
@@ -650,22 +745,12 @@ class BotController {
             this.metricsTimestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
         }
 
-        if (this.metricCards.uptime) {
-            this.metricCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
-        }
-        if (this.metricCards.contacts) {
-            this.metricCards.contacts.textContent = this.numberFormatter.format(snapshot?.totals?.uniqueContacts || 0);
-        }
-        if (this.metricCards.inbound) {
-            this.metricCards.inbound.textContent = this.numberFormatter.format(snapshot?.totals?.inbound || 0);
-        }
-        if (this.metricCards.outbound) {
-            this.metricCards.outbound.textContent = this.numberFormatter.format(snapshot?.totals?.outbound || 0);
-        }
-        if (this.metricCards.response) {
-            const avg = snapshot?.responseTime?.averageMs;
-            this.metricCards.response.textContent = Number.isFinite(avg) ? `${Math.round(avg)} ms` : '—';
-        }
+        this.updateMetricField('uptime', formatDuration(snapshot.uptimeMs));
+        this.updateMetricField('contacts', this.numberFormatter.format(snapshot?.totals?.uniqueContacts || 0));
+        this.updateMetricField('inbound', this.numberFormatter.format(snapshot?.totals?.inbound || 0));
+        this.updateMetricField('outbound', this.numberFormatter.format(snapshot?.totals?.outbound || 0));
+        const avg = snapshot?.responseTime?.averageMs;
+        this.updateMetricField('response', Number.isFinite(avg) ? `${Math.round(avg)} ms` : '—');
 
         this.updateTimelineChart(snapshot.timeline || []);
         this.updateProviderChart(snapshot.providers || []);
@@ -673,24 +758,29 @@ class BotController {
     }
 
     updateTimelineChart(buckets) {
-        if (!this.timelineChart) return;
-        if (!Array.isArray(buckets) || buckets.length === 0) {
-            this.timelineChart.data.labels = [''];
-            this.timelineChart.data.datasets[0].data = [0];
-            this.timelineChart.data.datasets[1].data = [0];
-        } else {
-            const labels = buckets.map(bucket => new Date(bucket.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            const inbound = buckets.map(bucket => bucket.inbound || 0);
-            const outbound = buckets.map(bucket => bucket.outbound || 0);
+        const hasBuckets = Array.isArray(buckets) && buckets.length > 0;
+        const labels = hasBuckets
+            ? buckets.map(bucket => new Date(bucket.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+            : [''];
+        const inbound = hasBuckets ? buckets.map(bucket => bucket.inbound || 0) : [0];
+        const outbound = hasBuckets ? buckets.map(bucket => bucket.outbound || 0) : [0];
+
+        if (this.timelineChart) {
             this.timelineChart.data.labels = labels;
             this.timelineChart.data.datasets[0].data = inbound;
             this.timelineChart.data.datasets[1].data = outbound;
+            this.timelineChart.update('none');
         }
-        this.timelineChart.update('none');
+
+        if (this.timelineSparkChart) {
+            const totals = inbound.map((value, index) => value + (outbound[index] || 0));
+            this.timelineSparkChart.data.labels = labels;
+            this.timelineSparkChart.data.datasets[0].data = totals;
+            this.timelineSparkChart.update('none');
+        }
     }
 
     updateProviderChart(providers) {
-        if (!this.providerChart) return;
         const colors = this.getThemeColors();
         let labels = [];
         let data = [];
@@ -705,12 +795,23 @@ class BotController {
             data = providers.map(p => p.requests || 0);
             backgrounds = providers.map((_, index) => this.providerPalette[index % this.providerPalette.length]);
         }
-        const dataset = this.providerChart.data.datasets[0];
-        this.providerChart.data.labels = labels;
-        dataset.data = data;
-        dataset.backgroundColor = backgrounds;
-        dataset.borderColor = backgrounds.map(color => withAlpha(color, 0.9));
-        this.providerChart.update('none');
+        if (this.providerChart) {
+            const dataset = this.providerChart.data.datasets[0];
+            this.providerChart.data.labels = labels;
+            dataset.data = data;
+            dataset.backgroundColor = backgrounds;
+            dataset.borderColor = backgrounds.map(color => withAlpha(color, 0.9));
+            this.providerChart.update('none');
+        }
+
+        if (this.providerMiniChart) {
+            const dataset = this.providerMiniChart.data.datasets[0];
+            this.providerMiniChart.data.labels = labels;
+            dataset.data = data;
+            dataset.backgroundColor = backgrounds;
+            dataset.borderColor = backgrounds.map(color => withAlpha(color, 0.9));
+            this.providerMiniChart.update('none');
+        }
     }
 
     updateLeaderboard(contacts) {
@@ -788,12 +889,143 @@ class BotController {
             }
             this.timelineChart.update('none');
         }
+        if (this.timelineSparkChart) {
+            const dataset = this.timelineSparkChart.data.datasets[0];
+            dataset.borderColor = colors.inbound;
+            dataset.backgroundColor = withAlpha(colors.inbound, 0.2);
+            this.timelineSparkChart.update('none');
+        }
         if (this.providerChart) {
             if (this.providerChart.options?.plugins?.legend?.labels) {
                 this.providerChart.options.plugins.legend.labels.color = colors.text;
             }
             this.providerChart.update('none');
         }
+        if (this.providerMiniChart) {
+            this.providerMiniChart.update('none');
+        }
+    }
+}
+
+function setupTabs(controller) {
+    const tabButtons = Array.from(document.querySelectorAll('.tablist [role="tab"]'));
+    if (!tabButtons.length) return;
+
+    const panels = new Map();
+    tabButtons.forEach(button => {
+        const panelId = button.dataset.panel || button.getAttribute('aria-controls');
+        if (!panelId) return;
+        const panel = document.getElementById(panelId);
+        if (panel) {
+            panels.set(button, panel);
+        }
+    });
+
+    const updateLocationHash = (button) => {
+        const hash = button?.dataset?.hash;
+        if (!hash) return;
+        if (window.location.hash === `#${hash}`) return;
+        try {
+            history.replaceState(null, '', `#${hash}`);
+        } catch (error) {
+            window.location.hash = hash;
+        }
+    };
+
+    let activeButton = null;
+    const activate = (button, { focus = false, updateHash = true, force = false } = {}) => {
+        if (!button) return false;
+        if (!force && button === activeButton) {
+            if (updateHash) updateLocationHash(button);
+            return true;
+        }
+        activeButton = button;
+        tabButtons.forEach(tab => {
+            const isActive = tab === button;
+            tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            tab.setAttribute('tabindex', isActive ? '0' : '-1');
+        });
+        panels.forEach((panel, tab) => {
+            const isActive = tab === button;
+            if (isActive) {
+                panel.removeAttribute('hidden');
+            } else {
+                panel.setAttribute('hidden', '');
+            }
+        });
+        if (focus) {
+            button.focus();
+        }
+        if (updateHash) {
+            updateLocationHash(button);
+        }
+        const panelId = panels.get(button)?.id;
+        if (panelId === 'panel-analytics') {
+            requestAnimationFrame(() => {
+                controller?.timelineChart?.resize?.();
+                controller?.providerChart?.resize?.();
+            });
+        }
+        return true;
+    };
+
+    const focusTabByOffset = (offset) => {
+        if (!tabButtons.length) return;
+        const currentIndex = activeButton ? tabButtons.indexOf(activeButton) : 0;
+        const nextIndex = (currentIndex + offset + tabButtons.length) % tabButtons.length;
+        const nextTab = tabButtons[nextIndex];
+        activate(nextTab, { focus: true });
+    };
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => activate(button));
+        button.addEventListener('keydown', event => {
+            switch (event.key) {
+                case 'ArrowRight':
+                case 'ArrowDown':
+                    event.preventDefault();
+                    focusTabByOffset(1);
+                    break;
+                case 'ArrowLeft':
+                case 'ArrowUp':
+                    event.preventDefault();
+                    focusTabByOffset(-1);
+                    break;
+                case 'Home':
+                    event.preventDefault();
+                    activate(tabButtons[0], { focus: true });
+                    break;
+                case 'End':
+                    event.preventDefault();
+                    activate(tabButtons[tabButtons.length - 1], { focus: true });
+                    break;
+                default:
+                    break;
+            }
+        });
+    });
+
+    const selectFromHash = (hash, { updateHash = false } = {}) => {
+        if (!hash) return false;
+        const normalized = hash.startsWith('#') ? hash.slice(1) : hash;
+        const target = tabButtons.find(button => button.dataset.hash === normalized || button.id === normalized);
+        if (target) {
+            activate(target, { updateHash, force: true });
+            return true;
+        }
+        return false;
+    };
+
+    window.addEventListener('hashchange', () => {
+        const handled = selectFromHash(window.location.hash, { updateHash: false });
+        if (!handled && activeButton) {
+            activate(activeButton, { updateHash: false, force: true });
+        }
+    });
+
+    if (!selectFromHash(window.location.hash, { updateHash: false })) {
+        const defaultButton = tabButtons.find(btn => btn.getAttribute('aria-selected') === 'true') || tabButtons[0];
+        activate(defaultButton, { updateHash: false, force: true });
     }
 }
 
@@ -807,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(theme);
 
     const controller = new BotController();
+    setupTabs(controller);
 
     if (toggle) {
         toggle.checked = theme === 'dark';

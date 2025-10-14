@@ -11,7 +11,8 @@
             --bg: #0f1115;
             --text: #e5e7eb;
             --container-bg: #171a21;
-            --shadow: rgba(0, 0, 0, 0.4);
+            --elevated-bg: #1c2029;
+            --shadow: rgba(0, 0, 0, 0.35);
             --heading: var(--text);
             --log-bg: #0b0f14;
             --log-border: #2a3241;
@@ -29,6 +30,8 @@
             --warning-bg: #3a3005;
             --warning-text: #f6d58d;
             --warning-border: #6b5a1f;
+            --tab-active: #2563eb;
+            --tab-hover: rgba(37, 99, 235, 0.35);
         }
 
         /* Light theme overrides */
@@ -36,8 +39,9 @@
             --bg: #f5f5f5;
             --text: #333333;
             --container-bg: #ffffff;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --heading: #333333;
+            --elevated-bg: #ffffff;
+            --shadow: rgba(0, 0, 0, 0.08);
+            --heading: #1f2937;
             --log-bg: #f8f9fa;
             --log-border: #dee2e6;
             --btn-text: #ffffff;
@@ -54,37 +58,71 @@
             --warning-bg: #fff3cd;
             --warning-text: #856404;
             --warning-border: #ffeaa7;
+            --tab-active: #1d4ed8;
+            --tab-hover: rgba(37, 99, 235, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
+            padding: 24px;
             background-color: var(--bg);
             color: var(--text);
+            display: flex;
+            justify-content: center;
         }
 
-        .container {
+        .dashboard {
+            width: min(1200px, 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .dashboard-header {
             background: var(--container-bg);
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px var(--shadow);
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px -24px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
         }
 
-        h1 {
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .header-title h1 {
+            margin: 0;
             color: var(--heading);
-            text-align: center;
-            margin-bottom: 30px;
+            font-size: clamp(1.6rem, 2vw + 1rem, 2.1rem);
+        }
+
+        .header-title p {
+            margin: 6px 0 0;
+            opacity: 0.65;
+            font-size: 0.95rem;
         }
 
         .theme-toggle {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 12px;
             color: var(--text);
+        }
+
+        .theme-toggle .toggle-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
         }
 
         .switch {
@@ -133,7 +171,6 @@
             transform: translateX(22px);
         }
 
-        /* Toggle icons */
         .slider .icon {
             position: absolute;
             top: 50%;
@@ -176,12 +213,32 @@
             opacity: 1;
         }
 
+        .warning {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            border: 1px solid var(--warning-border);
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            line-height: 1.45;
+        }
+
+        .status-cluster {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+            gap: 16px;
+            align-items: stretch;
+        }
+
         .status {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 16px;
+            border-radius: 10px;
+            font-weight: 600;
             text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 5px;
-            font-weight: bold;
+            transition: transform 0.2s ease;
         }
 
         .status.running {
@@ -196,198 +253,184 @@
             border: 1px solid var(--status-stopped-border);
         }
 
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin: 30px 0;
-        }
-
-        .group-section {
-            margin-top: 25px;
-            padding: 20px;
-            border-radius: 10px;
-            background: var(--log-bg);
-            border: 1px solid var(--log-border);
-        }
-
-        .group-section h2 {
-            margin: 0 0 8px 0;
-            font-size: 1.2rem;
-        }
-
-        .group-section p {
-            margin: 0;
-            font-size: 0.92rem;
-            opacity: 0.8;
-        }
-
-        .group-controls {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
+        .quick-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 12px;
-            margin-top: 15px;
         }
 
-        .group-controls label {
-            font-weight: 600;
-        }
-
-        .group-select {
-            flex: 1;
-            min-width: 220px;
-            padding: 10px;
-            border-radius: 6px;
+        .quick-card {
+            background: var(--elevated-bg);
+            border-radius: 10px;
+            padding: 12px 14px;
             border: 1px solid var(--log-border);
-            background: var(--container-bg);
-            color: var(--text);
-        }
-
-        .group-action-btn,
-        .group-refresh-btn {
-            padding: 10px 16px;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.2s ease;
-        }
-
-        .group-action-btn {
-            border: none;
-            background: #2563eb;
-            color: #ffffff;
-        }
-
-        .group-action-btn:hover:enabled {
-            background: #1d4ed8;
-            transform: translateY(-1px);
-        }
-
-        .group-refresh-btn {
-            border: 1px solid var(--log-border);
-            background: transparent;
-            color: var(--text);
-        }
-
-        .group-refresh-btn:hover:enabled {
-            background: rgba(37, 99, 235, 0.18);
-            transform: translateY(-1px);
-        }
-
-        .group-action-btn:disabled,
-        .group-refresh-btn:disabled,
-        .group-select:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-
-        .start-btn {
-            background-color: var(--button-start-bg);
-            color: var(--btn-text);
-        }
-
-        .start-btn:hover {
-            background-color: var(--button-start-bg-hover);
-        }
-
-        .stop-btn {
-            background-color: var(--button-stop-bg);
-            color: var(--btn-text);
-        }
-
-        .stop-btn:hover {
-            background-color: var(--button-stop-bg-hover);
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .metrics-section {
-            margin-top: 30px;
             display: flex;
             flex-direction: column;
+            gap: 6px;
+        }
+
+        .quick-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            opacity: 0.65;
+        }
+
+        .quick-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--heading);
+        }
+
+        .tab-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tablist {
+            display: flex;
+            gap: 8px;
+            background: var(--container-bg);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 10px 28px -24px var(--shadow);
+            overflow-x: auto;
+        }
+
+        .tablist button[role="tab"] {
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-weight: 600;
+            padding: 10px 18px;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .tablist button[role="tab"][aria-selected="true"] {
+            background: var(--tab-active);
+            color: #fff;
+        }
+
+        .tablist button[role="tab"]:hover {
+            background: var(--tab-hover);
+        }
+
+        .tab-panels {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        [role="tabpanel"] {
+            background: var(--container-bg);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 12px 32px -24px var(--shadow);
+        }
+
+        [role="tabpanel"][hidden] {
+            display: none;
+        }
+
+        .panel-grid {
+            display: grid;
             gap: 20px;
+        }
+
+        .panel-grid.two-column {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+
+        .card {
+            background: var(--elevated-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card h2,
+        .card h3 {
+            margin: 0;
+            color: var(--heading);
         }
 
         .metrics-header {
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            color: var(--heading);
+            align-items: center;
+            gap: 12px;
+        }
+
+        .metrics-header small {
+            opacity: 0.6;
         }
 
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
         }
 
         .metric-card {
-            background: var(--log-bg);
+            background: var(--container-bg);
             border: 1px solid var(--log-border);
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            box-shadow: 0 2px 6px var(--shadow);
+            gap: 8px;
+            box-shadow: 0 6px 18px -20px var(--shadow);
         }
 
         .metric-label {
             font-size: 13px;
-            color: var(--heading);
             opacity: 0.75;
         }
 
         .metric-value {
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 600;
-            color: var(--text);
-        }
-
-        .metrics-visuals {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
-        }
-
-        .chart-card, .leaderboard-card {
-            background: var(--log-bg);
-            border: 1px solid var(--log-border);
-            border-radius: 8px;
-            padding: 16px;
-            box-shadow: 0 2px 6px var(--shadow);
-        }
-
-        .chart-card h3, .leaderboard-card h3 {
-            margin: 0 0 10px;
-            font-size: 16px;
             color: var(--heading);
         }
 
-        /* Ensure charts have a stable height to avoid resize feedback loops */
+        .metrics-preview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .chart-card,
+        .leaderboard-card {
+            background: var(--elevated-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 8px 24px -22px var(--shadow);
+        }
+
         .chart-container {
             position: relative;
-            height: 180px; /* fixed chart drawing area */
+            height: 180px;
         }
+
         .chart-container canvas {
             width: 100% !important;
-            height: 100% !important; /* let Chart.js fill the container */
+            height: 100% !important;
             display: block;
+        }
+
+        .chart-container.is-expanded {
+            height: 280px;
         }
 
         .leaderboard-table {
@@ -415,206 +458,396 @@
             border-bottom: none;
         }
 
+        .control-stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        .control-grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: var(--heading);
+        }
+
+        select {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: 2px solid var(--tab-active);
+            outline-offset: 2px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .start-btn {
+            background-color: var(--button-start-bg);
+            color: var(--btn-text);
+        }
+
+        .start-btn:hover {
+            background-color: var(--button-start-bg-hover);
+        }
+
+        .stop-btn {
+            background-color: var(--button-stop-bg);
+            color: var(--btn-text);
+        }
+
+        .stop-btn:hover {
+            background-color: var(--button-stop-bg-hover);
+        }
+
+        button:disabled,
+        select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .group-controls {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            align-items: end;
+        }
+
+        .group-action-btn {
+            background: #2563eb;
+            color: #ffffff;
+        }
+
+        .group-action-btn:hover:enabled {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .group-refresh-btn {
+            border: 1px solid var(--log-border);
+            background: transparent;
+            color: var(--text);
+        }
+
+        .group-refresh-btn:hover:enabled {
+            background: rgba(37, 99, 235, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .log-drawer {
+            background: var(--elevated-bg);
+            border-radius: 12px;
+            border: 1px solid var(--log-border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            gap: 12px;
+        }
+
+        .log-toggle {
+            border: 1px solid var(--log-border);
+            background: transparent;
+            color: var(--text);
+            padding: 8px 16px;
+        }
+
+        .log-toggle:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
         .log {
             background-color: var(--log-bg);
-            border: 1px solid var(--log-border);
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 20px;
-            max-height: 300px;
+            border-top: 1px solid var(--log-border);
+            max-height: 220px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 13px;
             color: var(--text);
+            padding: 16px;
+            transition: max-height 0.2s ease;
         }
 
-        .warning {
-            background-color: var(--warning-bg);
-            color: var(--warning-text);
-            border: 1px solid var(--warning-border);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+        .log.expanded {
+            max-height: 520px;
         }
 
-        .personality-selector {
-            margin: 20px 0;
-            text-align: center;
+        .log div {
+            margin-bottom: 6px;
         }
 
-        .persona-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
+        @media (max-width: 900px) {
+            body {
+                padding: 16px;
+            }
+
+            .status-cluster {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
 
-        .persona-select:focus {
-            outline: 2px solid #2563eb;
-        }
-        .llm-selector { 
-            margin: 20px 0; 
-            text-align: center; 
-        }
-        .provider-select, .model-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
-        }
-        .provider-select:focus, .model-select:focus {
-            outline: 2px solid #2563eb;
+        @media (max-width: 600px) {
+            .dashboard-header,
+            [role="tabpanel"] {
+                padding: 18px;
+            }
+
+            .tablist button[role="tab"] {
+                flex: 1 0 auto;
+            }
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="theme-toggle" role="group" aria-label="Theme toggle">
-            <label class="switch" aria-label="Toggle theme">
-                <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
-                <span class="slider">
-                    <span class="icon moon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
-                        </svg>
-                    </span>
-                    <span class="icon sun" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path
-                                d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z">
-                            </path>
-                        </svg>
-                    </span>
-                </span>
-            </label>
-        </div>
-        <h1>🤖 Scam Bait Bot Control Panel</h1>
-
-        <div class="warning">
-            <strong>⚠️ Important:</strong> This bot is for educational purposes only.
-            Make sure to use a secondary Telegram account, not your personal one,
-            as this could result in account suspension.
-        </div>
-
-        <div id="status" class="status stopped">
-            Status: Checking...
-        </div>
-
-        <div class="personality-selector">
-            <label for="personaSelect">Bot Personality:</label>
-            <select id="personaSelect" class="persona-select">
-                <option value="">Loading personalities...</option>
-            </select>
-        </div>
-
-        <div class="llm-selector">
-            <label for="providerSelect">LLM Provider:</label>
-            <select id="providerSelect" class="provider-select">
-                <option value="pollinations">Pollinations</option>
-                <option value="openrouter">OpenRouter</option>
-            </select>
-        </div>
-        <div class="llm-selector" id="openrouterModelRow" style="display:none">
-            <label for="openrouterModelSelect">OpenRouter Model:</label>
-            <select id="openrouterModelSelect" class="model-select">
-                <option value="">Loading models...</option>
-            </select>
-        </div>
-
-        <section class="group-section" aria-label="Group outreach tools">
-            <h2>Group Honeypot Outreach</h2>
-            <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
-            <div class="group-controls">
-                <label for="groupSelect">Target group:</label>
-                <select id="groupSelect" class="group-select">
-                    <option value="">Choose a group…</option>
-                </select>
-                <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
-                <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
-            </div>
-        </section>
-
-        <div class="controls">
-            <button id="startBtn" class="start-btn">Start Bot</button>
-            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
-        </div>
-
-        <section class="metrics-section" aria-label="Bot metrics dashboard">
-            <div class="metrics-header">
-                <h2>Metrics Overview</h2>
-                <small id="metricsTimestamp">Last updated: --</small>
-            </div>
-            <div class="metrics-grid" role="list">
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Uptime</span>
-                    <span class="metric-value" id="metricUptime">--</span>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-row">
+                <div class="header-title">
+                    <h1>🤖 Scam Bait Bot Control Panel</h1>
+                    <p>Compact operations cockpit with deeper analytics when you need them.</p>
                 </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Unique Contacts</span>
-                    <span class="metric-value" id="metricContacts">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Inbound Messages</span>
-                    <span class="metric-value" id="metricInbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Outbound Messages</span>
-                    <span class="metric-value" id="metricOutbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Avg Response Delay</span>
-                    <span class="metric-value" id="metricResponse">--</span>
+                <div class="theme-toggle" role="group" aria-label="Theme toggle">
+                    <span class="toggle-label" id="themeLabel">Dark</span>
+                    <label class="switch" aria-label="Toggle theme">
+                        <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
+                        <span class="slider">
+                            <span class="icon moon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
+                                </svg>
+                            </span>
+                            <span class="icon sun" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96-.01a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z"></path>
+                                </svg>
+                            </span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
-            <div class="metrics-visuals">
-                <div class="chart-card">
-                    <h3>Message Throughput</h3>
-                    <div class="chart-container">
-                        <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+            <div class="warning">
+                <strong>⚠️ Important:</strong> This bot is for educational purposes only. Use a secondary Telegram account, not your
+                personal one, as this could result in account suspension.
+            </div>
+
+            <div class="status-cluster">
+                <div id="status" class="status stopped" role="status" aria-live="polite">
+                    Status: Checking...
+                </div>
+                <div class="quick-metrics" role="list">
+                    <div class="quick-card" role="listitem">
+                        <span class="quick-label">Uptime</span>
+                        <span class="quick-value" data-metric="uptime">--</span>
                     </div>
-                </div>
-                <div class="chart-card">
-                    <h3>LLM Provider Breakdown</h3>
-                    <div class="chart-container">
-                        <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                    <div class="quick-card" role="listitem">
+                        <span class="quick-label">Unique Contacts</span>
+                        <span class="quick-value" data-metric="contacts">--</span>
+                    </div>
+                    <div class="quick-card" role="listitem">
+                        <span class="quick-label">Inbound</span>
+                        <span class="quick-value" data-metric="inbound">--</span>
+                    </div>
+                    <div class="quick-card" role="listitem">
+                        <span class="quick-label">Outbound</span>
+                        <span class="quick-value" data-metric="outbound">--</span>
                     </div>
                 </div>
             </div>
+        </header>
 
-            <div class="leaderboard-card">
-                <h3>Recent Contacts</h3>
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Contact</th>
-                            <th scope="col">Inbound</th>
-                            <th scope="col">Outbound</th>
-                            <th scope="col">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboardBody">
-                        <tr>
-                            <td colspan="4">No data yet</td>
-                        </tr>
-                    </tbody>
-                </table>
+        <div class="tab-container">
+            <div class="tablist" role="tablist" aria-label="Dashboard sections">
+                <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" tabindex="0" data-panel="panel-overview" data-hash="overview">Overview</button>
+                <button role="tab" id="tab-operations" aria-controls="panel-operations" aria-selected="false" tabindex="-1" data-panel="panel-operations" data-hash="operations">Operations</button>
+                <button role="tab" id="tab-outreach" aria-controls="panel-outreach" aria-selected="false" tabindex="-1" data-panel="panel-outreach" data-hash="outreach">Outreach</button>
+                <button role="tab" id="tab-analytics" aria-controls="panel-analytics" aria-selected="false" tabindex="-1" data-panel="panel-analytics" data-hash="analytics">Analytics</button>
             </div>
-        </section>
 
-        <div class="log" id="log">
-            <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
+            <div class="tab-panels">
+                <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+                    <div class="panel-grid">
+                        <article class="card">
+                            <div class="metrics-header">
+                                <h2>Metrics Overview</h2>
+                                <small id="metricsTimestamp">Last updated: --</small>
+                            </div>
+                            <div class="metrics-grid" role="list">
+                                <div class="metric-card" role="listitem">
+                                    <span class="metric-label">Uptime</span>
+                                    <span class="metric-value" data-metric="uptime">--</span>
+                                </div>
+                                <div class="metric-card" role="listitem">
+                                    <span class="metric-label">Unique Contacts</span>
+                                    <span class="metric-value" data-metric="contacts">--</span>
+                                </div>
+                                <div class="metric-card" role="listitem">
+                                    <span class="metric-label">Inbound Messages</span>
+                                    <span class="metric-value" data-metric="inbound">--</span>
+                                </div>
+                                <div class="metric-card" role="listitem">
+                                    <span class="metric-label">Outbound Messages</span>
+                                    <span class="metric-value" data-metric="outbound">--</span>
+                                </div>
+                                <div class="metric-card" role="listitem">
+                                    <span class="metric-label">Avg Response Delay</span>
+                                    <span class="metric-value" data-metric="response">--</span>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="card">
+                            <h3>Signal Glance</h3>
+                            <div class="metrics-preview">
+                                <div class="chart-card">
+                                    <h3>Message Throughput</h3>
+                                    <div class="chart-container" aria-hidden="false">
+                                        <canvas id="throughputSparkChart" aria-label="Compact message throughput sparkline" role="img"></canvas>
+                                    </div>
+                                </div>
+                                <div class="chart-card">
+                                    <h3>Provider Share</h3>
+                                    <div class="chart-container" aria-hidden="false">
+                                        <canvas id="providerMiniChart" aria-label="Compact provider usage breakdown" role="img"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section id="panel-operations" role="tabpanel" aria-labelledby="tab-operations" hidden>
+                    <div class="panel-grid">
+                        <article class="card control-stack">
+                            <h2>Bot Controls</h2>
+                            <div class="control-grid">
+                                <div class="form-field">
+                                    <label for="personaSelect">Bot Personality</label>
+                                    <select id="personaSelect">
+                                        <option value="">Loading personalities...</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label for="providerSelect">LLM Provider</label>
+                                    <select id="providerSelect">
+                                        <option value="pollinations">Pollinations</option>
+                                        <option value="openrouter">OpenRouter</option>
+                                    </select>
+                                </div>
+                                <div class="form-field" id="openrouterModelRow" style="display:none">
+                                    <label for="openrouterModelSelect">OpenRouter Model</label>
+                                    <select id="openrouterModelSelect">
+                                        <option value="">Loading models...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="control-grid">
+                                <button id="startBtn" class="start-btn">Start Bot</button>
+                                <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
+                            </div>
+                        </article>
+
+                        <article class="log-drawer">
+                            <div class="log-header">
+                                <h2>Live Activity Log</h2>
+                                <button id="logToggleBtn" class="log-toggle" type="button" aria-expanded="false">Expand log</button>
+                            </div>
+                            <div class="log" id="log" aria-live="polite" aria-label="Bot activity log">
+                                <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section id="panel-outreach" role="tabpanel" aria-labelledby="tab-outreach" hidden>
+                    <div class="panel-grid">
+                        <article class="card">
+                            <h2>Group Honeypot Outreach</h2>
+                            <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
+                            <div class="group-controls">
+                                <div class="form-field">
+                                    <label for="groupSelect">Target Group</label>
+                                    <select id="groupSelect" class="group-select">
+                                        <option value="">Choose a group…</option>
+                                    </select>
+                                </div>
+                                <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
+                                <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section id="panel-analytics" role="tabpanel" aria-labelledby="tab-analytics" hidden>
+                    <div class="panel-grid two-column">
+                        <article class="chart-card">
+                            <h3>Message Throughput</h3>
+                            <div class="chart-container is-expanded">
+                                <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                            </div>
+                        </article>
+                        <article class="chart-card">
+                            <h3>LLM Provider Breakdown</h3>
+                            <div class="chart-container is-expanded">
+                                <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                            </div>
+                        </article>
+                        <article class="leaderboard-card">
+                            <h3>Recent Contacts</h3>
+                            <table class="leaderboard-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Contact</th>
+                                        <th scope="col">Inbound</th>
+                                        <th scope="col">Outbound</th>
+                                        <th scope="col">Last Seen</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="leaderboardBody">
+                                    <tr>
+                                        <td colspan="4">No data yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </article>
+                    </div>
+                </section>
+            </div>
         </div>
     </div>
 
