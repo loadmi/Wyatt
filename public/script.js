@@ -87,6 +87,13 @@ class BotController {
             outbound: document.getElementById('metricOutbound'),
             response: document.getElementById('metricResponse'),
         };
+        this.summaryCards = {
+            uptime: document.getElementById('summaryUptime'),
+            contacts: document.getElementById('summaryContacts'),
+            inbound: document.getElementById('summaryInbound'),
+            outbound: document.getElementById('summaryOutbound'),
+            response: document.getElementById('summaryResponse'),
+        };
         this.leaderboardBody = document.getElementById('leaderboardBody');
         this.throughputCanvas = document.getElementById('throughputChart');
         this.providerCanvas = document.getElementById('providerChart');
@@ -650,6 +657,8 @@ class BotController {
             this.metricsTimestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
         }
 
+        this.updateSummaryCards(snapshot);
+
         if (this.metricCards.uptime) {
             this.metricCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
         }
@@ -670,6 +679,27 @@ class BotController {
         this.updateTimelineChart(snapshot.timeline || []);
         this.updateProviderChart(snapshot.providers || []);
         this.updateLeaderboard(snapshot.contacts || []);
+    }
+
+    updateSummaryCards(snapshot) {
+        if (!this.summaryCards) return;
+        const totals = snapshot?.totals || {};
+        if (this.summaryCards.uptime) {
+            this.summaryCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
+        }
+        if (this.summaryCards.contacts) {
+            this.summaryCards.contacts.textContent = this.numberFormatter.format(totals.uniqueContacts || 0);
+        }
+        if (this.summaryCards.inbound) {
+            this.summaryCards.inbound.textContent = this.numberFormatter.format(totals.inbound || 0);
+        }
+        if (this.summaryCards.outbound) {
+            this.summaryCards.outbound.textContent = this.numberFormatter.format(totals.outbound || 0);
+        }
+        if (this.summaryCards.response) {
+            const avg = snapshot?.responseTime?.averageMs;
+            this.summaryCards.response.textContent = Number.isFinite(avg) ? `${Math.round(avg)} ms` : '—';
+        }
     }
 
     updateTimelineChart(buckets) {
@@ -752,6 +782,32 @@ class BotController {
         });
     }
 
+    handleTabActivated(tabId) {
+        if (tabId === 'metrics') {
+            this.refreshMetrics();
+            window.requestAnimationFrame(() => this.resizeCharts());
+        } else if (tabId === 'activity' && this.logDiv) {
+            this.logDiv.scrollTop = this.logDiv.scrollHeight;
+        }
+    }
+
+    resizeCharts() {
+        if (this.timelineChart && typeof this.timelineChart.resize === 'function') {
+            try {
+                this.timelineChart.resize();
+            } catch (error) {
+                console.warn('Timeline chart resize failed:', error);
+            }
+        }
+        if (this.providerChart && typeof this.providerChart.resize === 'function') {
+            try {
+                this.providerChart.resize();
+            } catch (error) {
+                console.warn('Provider chart resize failed:', error);
+            }
+        }
+    }
+
     getThemeColors() {
         const styles = getComputedStyle(document.documentElement);
         const text = styles.getPropertyValue('--text').trim() || '#e5e7eb';
@@ -797,6 +853,91 @@ class BotController {
     }
 }
 
+class TabController {
+    constructor(controller) {
+        this.controller = controller;
+        this.storageKey = 'dashboard.activeTab';
+        this.tabs = [];
+        this.activeTab = null;
+        const buttons = Array.from(document.querySelectorAll('.tab-button[role="tab"]'));
+        buttons.forEach((button, index) => {
+            const slug = button.dataset.tab;
+            const panelId = button.getAttribute('aria-controls');
+            const panel = panelId ? document.getElementById(panelId) : null;
+            if (!slug || !panel) {
+                return;
+            }
+            this.tabs.push({ slug, button, panel, index });
+            button.addEventListener('click', () => this.activate(slug));
+            button.addEventListener('keydown', (event) => this.onKeydown(event, slug));
+        });
+
+        const saved = this.getSavedTab();
+        if (saved && this.tabs.some(tab => tab.slug === saved)) {
+            this.activate(saved, { focusButton: false, skipStore: true });
+        } else if (this.tabs.length > 0) {
+            this.activate(this.tabs[0].slug, { focusButton: false, skipStore: true });
+        }
+    }
+
+    activate(slug, { focusButton = true, skipStore = false } = {}) {
+        if (this.activeTab === slug) return;
+        this.activeTab = slug;
+        this.tabs.forEach(({ slug: tabSlug, button, panel }) => {
+            const isActive = tabSlug === slug;
+            button.setAttribute('aria-selected', String(isActive));
+            button.tabIndex = isActive ? 0 : -1;
+            if (isActive && focusButton) {
+                button.focus();
+            }
+            if (isActive) {
+                panel.removeAttribute('hidden');
+                panel.setAttribute('aria-hidden', 'false');
+            } else {
+                panel.setAttribute('hidden', '');
+                panel.setAttribute('aria-hidden', 'true');
+            }
+        });
+
+        if (!skipStore) {
+            try {
+                localStorage.setItem(this.storageKey, slug);
+            } catch (error) {
+                console.warn('Unable to persist active tab:', error);
+            }
+        }
+
+        if (this.controller && typeof this.controller.handleTabActivated === 'function') {
+            this.controller.handleTabActivated(slug);
+        }
+    }
+
+    onKeydown(event, slug) {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+            return;
+        }
+        event.preventDefault();
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const currentIndex = this.tabs.findIndex(tab => tab.slug === slug);
+        if (currentIndex === -1) return;
+        const total = this.tabs.length;
+        const nextIndex = (currentIndex + direction + total) % total;
+        const nextTab = this.tabs[nextIndex];
+        if (nextTab) {
+            this.activate(nextTab.slug, { focusButton: true });
+        }
+    }
+
+    getSavedTab() {
+        try {
+            return localStorage.getItem(this.storageKey);
+        } catch (error) {
+            console.warn('Unable to read saved tab preference:', error);
+            return null;
+        }
+    }
+}
+
 // Initialize the controller when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     const toggle = document.getElementById('themeToggle');
@@ -807,6 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(theme);
 
     const controller = new BotController();
+    new TabController(controller);
 
     if (toggle) {
         toggle.checked = theme === 'dark';
@@ -817,6 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateThemeLabel(label, newTheme);
             try { localStorage.setItem('theme', newTheme); } catch (e) { }
             controller.refreshChartTheme();
+            controller.resizeCharts();
         });
     }
 

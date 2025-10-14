@@ -13,6 +13,7 @@
             --container-bg: #171a21;
             --shadow: rgba(0, 0, 0, 0.4);
             --heading: var(--text);
+            --subtle: rgba(229, 231, 235, 0.6);
             --log-bg: #0b0f14;
             --log-border: #2a3241;
             --btn-text: #ffffff;
@@ -29,6 +30,9 @@
             --warning-bg: #3a3005;
             --warning-text: #f6d58d;
             --warning-border: #6b5a1f;
+            --tab-bg: rgba(255, 255, 255, 0.04);
+            --tab-active-bg: rgba(37, 99, 235, 0.18);
+            --tab-border: rgba(148, 163, 184, 0.24);
         }
 
         /* Light theme overrides */
@@ -37,7 +41,8 @@
             --text: #333333;
             --container-bg: #ffffff;
             --shadow: rgba(0, 0, 0, 0.1);
-            --heading: #333333;
+            --heading: #1f2937;
+            --subtle: rgba(55, 65, 81, 0.6);
             --log-bg: #f8f9fa;
             --log-border: #dee2e6;
             --btn-text: #ffffff;
@@ -54,37 +59,62 @@
             --warning-bg: #fff3cd;
             --warning-text: #856404;
             --warning-border: #ffeaa7;
+            --tab-bg: rgba(15, 23, 42, 0.06);
+            --tab-active-bg: rgba(37, 99, 235, 0.14);
+            --tab-border: rgba(148, 163, 184, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
+            padding: 24px 16px 48px;
             background-color: var(--bg);
             color: var(--text);
+            display: flex;
+            justify-content: center;
         }
 
-        .container {
-            background: var(--container-bg);
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px var(--shadow);
+        .dashboard {
+            width: min(1040px, 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        h1 {
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: clamp(1.6rem, 2.4vw, 2.1rem);
             color: var(--heading);
-            text-align: center;
-            margin-bottom: 30px;
+        }
+
+        .subtitle {
+            margin: 6px 0 0;
+            color: var(--subtle);
+            font-size: 0.95rem;
         }
 
         .theme-toggle {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
             gap: 10px;
-            margin-bottom: 10px;
             color: var(--text);
+        }
+
+        .theme-label {
+            font-size: 0.85rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
         .switch {
@@ -125,15 +155,14 @@
             z-index: 2;
         }
 
-        input:checked+.slider {
+        input:checked + .slider {
             background-color: #2563eb;
         }
 
-        input:checked+.slider:before {
+        input:checked + .slider:before {
             transform: translateX(22px);
         }
 
-        /* Toggle icons */
         .slider .icon {
             position: absolute;
             top: 50%;
@@ -160,94 +189,237 @@
             color: #fbbf24;
         }
 
-        input:checked+.slider .icon.moon {
+        input:checked + .slider .icon.moon {
             opacity: 1;
         }
 
-        input:checked+.slider .icon.sun {
+        input:checked + .slider .icon.sun {
             opacity: 0;
         }
 
-        input:not(:checked)+.slider .icon.moon {
+        input:not(:checked) + .slider .icon.moon {
             opacity: 0;
         }
 
-        input:not(:checked)+.slider .icon.sun {
+        input:not(:checked) + .slider .icon.sun {
             opacity: 1;
+        }
+
+        .warning {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            border: 1px solid var(--warning-border);
+            padding: 16px 18px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 12px;
+            background: var(--tab-bg);
+            border: 1px solid var(--tab-border);
+            overflow-x: auto;
+        }
+
+        .tab-button {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-weight: 600;
+            padding: 10px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .tab-button[aria-selected="true"] {
+            background: var(--tab-active-bg);
+        }
+
+        .tab-button:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .tab-panels {
+            display: grid;
+            gap: 18px;
+        }
+
+        .tab-panel[hidden] {
+            display: none !important;
+        }
+
+        .panel-stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel-card {
+            background: var(--container-bg);
+            border-radius: 14px;
+            padding: 24px;
+            box-shadow: 0 12px 28px -20px var(--shadow);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            display: grid;
+            gap: 18px;
+        }
+
+        .panel-title {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--heading);
+            letter-spacing: 0.01em;
         }
 
         .status {
             text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 5px;
-            font-weight: bold;
+            padding: 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            transition: background 0.2s ease;
         }
 
         .status.running {
             background-color: var(--status-running-bg);
             color: var(--status-running-text);
-            border: 1px solid var(--status-running-border);
+            border-color: var(--status-running-border);
         }
 
         .status.stopped {
             background-color: var(--status-stopped-bg);
             color: var(--status-stopped-text);
-            border: 1px solid var(--status-stopped-border);
+            border-color: var(--status-stopped-border);
         }
 
         .controls {
             display: flex;
-            gap: 15px;
+            flex-wrap: wrap;
             justify-content: center;
-            margin: 30px 0;
+            gap: 12px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .start-btn {
+            background-color: var(--button-start-bg);
+            color: var(--btn-text);
+        }
+
+        .start-btn:hover:not(:disabled) {
+            background-color: var(--button-start-bg-hover);
+            transform: translateY(-1px);
+        }
+
+        .stop-btn {
+            background-color: var(--button-stop-bg);
+            color: var(--btn-text);
+        }
+
+        .stop-btn:hover:not(:disabled) {
+            background-color: var(--button-stop-bg-hover);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+        }
+
+        .metric-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 16px;
+            display: grid;
+            gap: 6px;
+        }
+
+        .metric-label {
+            font-size: 0.78rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--subtle);
+        }
+
+        .metric-value {
+            font-size: 1.35rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+        }
+
+        .form-field {
+            display: grid;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: var(--heading);
+        }
+
+        select {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: 2px solid #2563eb;
+            outline-offset: 1px;
         }
 
         .group-section {
-            margin-top: 25px;
-            padding: 20px;
-            border-radius: 10px;
-            background: var(--log-bg);
-            border: 1px solid var(--log-border);
-        }
-
-        .group-section h2 {
-            margin: 0 0 8px 0;
-            font-size: 1.2rem;
-        }
-
-        .group-section p {
-            margin: 0;
-            font-size: 0.92rem;
-            opacity: 0.8;
+            display: grid;
+            gap: 12px;
         }
 
         .group-controls {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, auto));
             gap: 12px;
-            margin-top: 15px;
-        }
-
-        .group-controls label {
-            font-weight: 600;
+            align-items: center;
         }
 
         .group-select {
-            flex: 1;
-            min-width: 220px;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid var(--log-border);
-            background: var(--container-bg);
-            color: var(--text);
+            min-width: 200px;
         }
 
         .group-action-btn,
         .group-refresh-btn {
             padding: 10px 16px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s ease, transform 0.2s ease;
@@ -275,125 +447,63 @@
             transform: translateY(-1px);
         }
 
-        .group-action-btn:disabled,
-        .group-refresh-btn:disabled,
-        .group-select:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-
-        .start-btn {
-            background-color: var(--button-start-bg);
-            color: var(--btn-text);
-        }
-
-        .start-btn:hover {
-            background-color: var(--button-start-bg-hover);
-        }
-
-        .stop-btn {
-            background-color: var(--button-stop-bg);
-            color: var(--btn-text);
-        }
-
-        .stop-btn:hover {
-            background-color: var(--button-stop-bg-hover);
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
         .metrics-section {
-            margin-top: 30px;
-            display: flex;
-            flex-direction: column;
+            display: grid;
             gap: 20px;
         }
 
         .metrics-header {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
             color: var(--heading);
         }
 
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
-        }
-
-        .metric-card {
-            background: var(--log-bg);
-            border: 1px solid var(--log-border);
-            border-radius: 8px;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            box-shadow: 0 2px 6px var(--shadow);
-        }
-
-        .metric-label {
-            font-size: 13px;
-            color: var(--heading);
-            opacity: 0.75;
-        }
-
-        .metric-value {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--text);
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
         }
 
         .metrics-visuals {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
+            gap: 18px;
         }
 
-        .chart-card, .leaderboard-card {
+        .chart-card,
+        .leaderboard-card {
             background: var(--log-bg);
             border: 1px solid var(--log-border);
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: 12px;
+            padding: 18px;
             box-shadow: 0 2px 6px var(--shadow);
         }
 
-        .chart-card h3, .leaderboard-card h3 {
+        .chart-card h3,
+        .leaderboard-card h3 {
             margin: 0 0 10px;
-            font-size: 16px;
+            font-size: 1rem;
             color: var(--heading);
         }
 
-        /* Ensure charts have a stable height to avoid resize feedback loops */
         .chart-container {
             position: relative;
-            height: 180px; /* fixed chart drawing area */
+            height: 220px;
         }
+
         .chart-container canvas {
             width: 100% !important;
-            height: 100% !important; /* let Chart.js fill the container */
+            height: 100% !important;
             display: block;
         }
 
         .leaderboard-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 0.9rem;
             color: var(--text);
         }
 
@@ -408,7 +518,7 @@
         .leaderboard-table th {
             font-weight: 600;
             color: var(--heading);
-            opacity: 0.8;
+            opacity: 0.85;
         }
 
         .leaderboard-table tr:last-child td {
@@ -418,204 +528,239 @@
         .log {
             background-color: var(--log-bg);
             border: 1px solid var(--log-border);
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 20px;
-            max-height: 300px;
+            border-radius: 12px;
+            padding: 18px;
+            max-height: 320px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 0.85rem;
             color: var(--text);
         }
 
-        .warning {
-            background-color: var(--warning-bg);
-            color: var(--warning-text);
-            border: 1px solid var(--warning-border);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
+        @media (max-width: 720px) {
+            body {
+                padding: 18px 12px 36px;
+            }
 
-        .personality-selector {
-            margin: 20px 0;
-            text-align: center;
-        }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
 
-        .persona-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
-        }
-
-        .persona-select:focus {
-            outline: 2px solid #2563eb;
-        }
-        .llm-selector { 
-            margin: 20px 0; 
-            text-align: center; 
-        }
-        .provider-select, .model-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
-        }
-        .provider-select:focus, .model-select:focus {
-            outline: 2px solid #2563eb;
+            .theme-toggle {
+                justify-content: flex-end;
+            }
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="theme-toggle" role="group" aria-label="Theme toggle">
-            <label class="switch" aria-label="Toggle theme">
-                <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
-                <span class="slider">
-                    <span class="icon moon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
-                        </svg>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div>
+                <h1>🤖 Scam Bait Bot Control Panel</h1>
+                <p class="subtitle">Command center for baiting operations — compact, layered, and readable.</p>
+            </div>
+            <div class="theme-toggle" role="group" aria-label="Theme toggle">
+                <span id="themeLabel" class="theme-label" aria-live="polite">Dark</span>
+                <label class="switch" aria-label="Toggle theme">
+                    <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
+                    <span class="slider">
+                        <span class="icon moon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
+                            </svg>
+                        </span>
+                        <span class="icon sun" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path
+                                    d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z">
+                                </path>
+                            </svg>
+                        </span>
                     </span>
-                    <span class="icon sun" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path
-                                d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z">
-                            </path>
-                        </svg>
-                    </span>
-                </span>
-            </label>
-        </div>
-        <h1>🤖 Scam Bait Bot Control Panel</h1>
+                </label>
+            </div>
+        </header>
 
         <div class="warning">
-            <strong>⚠️ Important:</strong> This bot is for educational purposes only.
-            Make sure to use a secondary Telegram account, not your personal one,
-            as this could result in account suspension.
+            <strong>⚠️ Important:</strong> This bot is for educational purposes only. Use a secondary Telegram account to
+            avoid potential suspension of your personal account.
         </div>
 
-        <div id="status" class="status stopped">
-            Status: Checking...
-        </div>
+        <nav class="tab-bar" role="tablist" aria-label="Dashboard sections">
+            <button id="tab-overview" class="tab-button" type="button" role="tab" aria-selected="true"
+                aria-controls="panel-overview" data-tab="overview">Overview</button>
+            <button id="tab-configuration" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">Configuration</button>
+            <button id="tab-outreach" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-outreach" tabindex="-1" data-tab="outreach">Outreach</button>
+            <button id="tab-metrics" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-metrics" tabindex="-1" data-tab="metrics">Metrics</button>
+            <button id="tab-activity" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-activity" tabindex="-1" data-tab="activity">Activity</button>
+        </nav>
 
-        <div class="personality-selector">
-            <label for="personaSelect">Bot Personality:</label>
-            <select id="personaSelect" class="persona-select">
-                <option value="">Loading personalities...</option>
-            </select>
-        </div>
-
-        <div class="llm-selector">
-            <label for="providerSelect">LLM Provider:</label>
-            <select id="providerSelect" class="provider-select">
-                <option value="pollinations">Pollinations</option>
-                <option value="openrouter">OpenRouter</option>
-            </select>
-        </div>
-        <div class="llm-selector" id="openrouterModelRow" style="display:none">
-            <label for="openrouterModelSelect">OpenRouter Model:</label>
-            <select id="openrouterModelSelect" class="model-select">
-                <option value="">Loading models...</option>
-            </select>
-        </div>
-
-        <section class="group-section" aria-label="Group outreach tools">
-            <h2>Group Honeypot Outreach</h2>
-            <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
-            <div class="group-controls">
-                <label for="groupSelect">Target group:</label>
-                <select id="groupSelect" class="group-select">
-                    <option value="">Choose a group…</option>
-                </select>
-                <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
-                <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
-            </div>
-        </section>
-
-        <div class="controls">
-            <button id="startBtn" class="start-btn">Start Bot</button>
-            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
-        </div>
-
-        <section class="metrics-section" aria-label="Bot metrics dashboard">
-            <div class="metrics-header">
-                <h2>Metrics Overview</h2>
-                <small id="metricsTimestamp">Last updated: --</small>
-            </div>
-            <div class="metrics-grid" role="list">
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Uptime</span>
-                    <span class="metric-value" id="metricUptime">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Unique Contacts</span>
-                    <span class="metric-value" id="metricContacts">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Inbound Messages</span>
-                    <span class="metric-value" id="metricInbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Outbound Messages</span>
-                    <span class="metric-value" id="metricOutbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Avg Response Delay</span>
-                    <span class="metric-value" id="metricResponse">--</span>
-                </div>
-            </div>
-
-            <div class="metrics-visuals">
-                <div class="chart-card">
-                    <h3>Message Throughput</h3>
-                    <div class="chart-container">
-                        <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+        <main class="tab-panels">
+            <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
+                <div class="panel-stack">
+                    <div class="panel-card">
+                        <h2 class="panel-title">Run State</h2>
+                        <div id="status" class="status stopped">Status: Checking...</div>
+                        <div class="controls">
+                            <button id="startBtn" class="start-btn">Start Bot</button>
+                            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
+                        </div>
+                    </div>
+                    <div class="panel-card">
+                        <h2 class="panel-title">Snapshot</h2>
+                        <div class="summary-grid">
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Uptime</span>
+                                <span class="metric-value" id="summaryUptime">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Unique Contacts</span>
+                                <span class="metric-value" id="summaryContacts">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Inbound Messages</span>
+                                <span class="metric-value" id="summaryInbound">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Outbound Messages</span>
+                                <span class="metric-value" id="summaryOutbound">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Avg Response Delay</span>
+                                <span class="metric-value" id="summaryResponse">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="chart-card">
-                    <h3>LLM Provider Breakdown</h3>
-                    <div class="chart-container">
-                        <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+            </section>
+
+            <section id="panel-configuration" class="tab-panel" role="tabpanel" aria-labelledby="tab-configuration"
+                hidden>
+                <div class="panel-card">
+                    <h2 class="panel-title">Persona &amp; LLM Settings</h2>
+                    <div class="config-grid">
+                        <div class="form-field">
+                            <label for="personaSelect">Bot Personality</label>
+                            <select id="personaSelect" class="persona-select">
+                                <option value="">Loading personalities...</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="providerSelect">LLM Provider</label>
+                            <select id="providerSelect" class="provider-select">
+                                <option value="pollinations">Pollinations</option>
+                                <option value="openrouter">OpenRouter</option>
+                            </select>
+                        </div>
+                        <div class="form-field" id="openrouterModelRow" style="display:none">
+                            <label for="openrouterModelSelect">OpenRouter Model</label>
+                            <select id="openrouterModelSelect" class="model-select">
+                                <option value="">Loading models...</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="leaderboard-card">
-                <h3>Recent Contacts</h3>
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Contact</th>
-                            <th scope="col">Inbound</th>
-                            <th scope="col">Outbound</th>
-                            <th scope="col">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboardBody">
-                        <tr>
-                            <td colspan="4">No data yet</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <section id="panel-outreach" class="tab-panel" role="tabpanel" aria-labelledby="tab-outreach" hidden>
+                <div class="panel-card">
+                    <h2 class="panel-title">Group Honeypot Outreach</h2>
+                    <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
+                    <div class="group-section" aria-label="Group outreach tools">
+                        <div class="group-controls">
+                            <label for="groupSelect">Target group</label>
+                            <select id="groupSelect" class="group-select">
+                                <option value="">Choose a group…</option>
+                            </select>
+                            <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
+                            <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <div class="log" id="log">
-            <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
-        </div>
+            <section id="panel-metrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-metrics" hidden>
+                <div class="panel-card">
+                    <div class="metrics-section" aria-label="Bot metrics dashboard">
+                        <div class="metrics-header">
+                            <h2 class="panel-title">Metrics Overview</h2>
+                            <small id="metricsTimestamp">Last updated: --</small>
+                        </div>
+                        <div class="metrics-grid" role="list">
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Uptime</span>
+                                <span class="metric-value" id="metricUptime">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Unique Contacts</span>
+                                <span class="metric-value" id="metricContacts">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Inbound Messages</span>
+                                <span class="metric-value" id="metricInbound">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Outbound Messages</span>
+                                <span class="metric-value" id="metricOutbound">--</span>
+                            </div>
+                            <div class="metric-card" role="listitem">
+                                <span class="metric-label">Avg Response Delay</span>
+                                <span class="metric-value" id="metricResponse">--</span>
+                            </div>
+                        </div>
+
+                        <div class="metrics-visuals">
+                            <div class="chart-card">
+                                <h3>Message Throughput</h3>
+                                <div class="chart-container">
+                                    <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                                </div>
+                            </div>
+                            <div class="chart-card">
+                                <h3>LLM Provider Breakdown</h3>
+                                <div class="chart-container">
+                                    <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="leaderboard-card">
+                            <h3>Recent Contacts</h3>
+                            <table class="leaderboard-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Contact</th>
+                                        <th scope="col">Inbound</th>
+                                        <th scope="col">Outbound</th>
+                                        <th scope="col">Last Seen</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="leaderboardBody">
+                                    <tr>
+                                        <td colspan="4">No data yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="panel-activity" class="tab-panel" role="tabpanel" aria-labelledby="tab-activity" hidden>
+                <div class="panel-card">
+                    <h2 class="panel-title">Activity Log</h2>
+                    <div class="log" id="log">
+                        <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
