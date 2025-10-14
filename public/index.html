@@ -58,24 +58,113 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
+            font-size: 16px;
+            line-height: 1.6;
+            max-width: 1120px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 24px;
             background-color: var(--bg);
             color: var(--text);
         }
 
-        .container {
-            background: var(--container-bg);
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px var(--shadow);
+        h1, h2, h3 {
+            color: var(--heading);
+            font-weight: 700;
+            letter-spacing: -0.01em;
         }
 
         h1 {
-            color: var(--heading);
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
+            font-size: 2rem;
+        }
+
+        h2 {
+            font-size: 1.35rem;
+            margin: 0 0 12px;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            margin: 0 0 10px;
+        }
+
+        p, label, small {
+            color: var(--text);
+        }
+
+        small,
+        .muted {
+            color: rgba(229, 231, 235, 0.72);
+        }
+
+        .theme-light small,
+        .theme-light .muted {
+            color: rgba(55, 65, 81, 0.72);
+        }
+
+        .tabbed-dashboard {
+            background: var(--container-bg);
+            padding: 28px;
+            border-radius: 16px;
+            box-shadow: 0 4px 18px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .tab-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            padding: 6px;
+            border-radius: 12px;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+        }
+
+        .tab-button[aria-selected="true"] {
+            background: rgba(37, 99, 235, 0.18);
+            color: #a0c4ff;
+            transform: translateY(-1px);
+        }
+
+        .theme-light .tab-button[aria-selected="true"] {
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.12);
+        }
+
+        .tab-button:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .tab-panels {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .tab-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .is-hidden {
+            display: none !important;
         }
 
         .theme-toggle {
@@ -85,6 +174,28 @@
             gap: 10px;
             margin-bottom: 10px;
             color: var(--text);
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .panel-header h2 {
+            margin: 0;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.2);
+            color: inherit;
         }
 
         .switch {
@@ -176,12 +287,39 @@
             opacity: 1;
         }
 
+        .overview-grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        }
+
+        .overview-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .warning-card {
+            background: var(--warning-bg);
+            border-color: var(--warning-border);
+            color: var(--warning-text);
+        }
+
+        .warning-card strong,
+        .warning-card p {
+            color: inherit;
+        }
+
         .status {
             text-align: center;
-            margin: 20px 0;
             padding: 15px;
-            border-radius: 5px;
-            font-weight: bold;
+            border-radius: 10px;
+            font-weight: 600;
         }
 
         .status.running {
@@ -198,17 +336,22 @@
 
         .controls {
             display: flex;
-            gap: 15px;
+            gap: 12px;
             justify-content: center;
-            margin: 30px 0;
+            flex-wrap: wrap;
+            align-items: stretch;
+        }
+
+        .controls button {
+            flex: 1;
         }
 
         .group-section {
-            margin-top: 25px;
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 12px;
             background: var(--log-bg);
             border: 1px solid var(--log-border);
+            box-shadow: 0 2px 8px var(--shadow);
         }
 
         .group-section h2 {
@@ -283,14 +426,28 @@
             transform: none;
         }
 
+        .configuration-grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+
+        .selector-card {
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
         button {
             padding: 12px 24px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s ease;
+            font-weight: 600;
+            transition: all 0.2s ease;
         }
 
         .start-btn {
@@ -317,7 +474,6 @@
         }
 
         .metrics-section {
-            margin-top: 30px;
             display: flex;
             flex-direction: column;
             gap: 20px;
@@ -327,20 +483,21 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
             color: var(--heading);
         }
 
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
         }
 
         .metric-card {
             background: var(--log-bg);
             border: 1px solid var(--log-border);
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: 10px;
+            padding: 18px;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -348,27 +505,38 @@
         }
 
         .metric-label {
-            font-size: 13px;
+            font-size: 0.85rem;
             color: var(--heading);
             opacity: 0.75;
         }
 
         .metric-value {
-            font-size: 20px;
+            font-size: 1.35rem;
             font-weight: 600;
             color: var(--text);
         }
 
         .metrics-visuals {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 20px;
+        }
+
+        .chart-stack {
+            display: grid;
+            gap: 20px;
+        }
+
+        @media (min-width: 960px) {
+            .metrics-visuals {
+                grid-template-columns: 2fr 1fr;
+                align-items: start;
+            }
         }
 
         .chart-card, .leaderboard-card {
             background: var(--log-bg);
             border: 1px solid var(--log-border);
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 16px;
             box-shadow: 0 2px 6px var(--shadow);
         }
@@ -415,71 +583,83 @@
             border-bottom: none;
         }
 
-        .log {
-            background-color: var(--log-bg);
+        .log-panel {
+            background: var(--log-bg);
             border: 1px solid var(--log-border);
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 20px;
-            max-height: 300px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .log-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 18px 0;
+        }
+
+        .log-toggle {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border-radius: 999px;
+            background: transparent;
+            border: 1px solid var(--log-border);
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .log-toggle:hover {
+            background: rgba(37, 99, 235, 0.18);
+        }
+
+        .log {
+            background-color: transparent;
+            border-radius: 0 0 12px 12px;
+            padding: 16px 18px 20px;
+            max-height: 220px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 0.9rem;
             color: var(--text);
         }
 
-        .warning {
-            background-color: var(--warning-bg);
-            color: var(--warning-text);
-            border: 1px solid var(--warning-border);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+        .log.is-expanded {
+            max-height: none;
         }
 
-        .personality-selector {
-            margin: 20px 0;
-            text-align: center;
+        .selector-helper {
+            font-size: 0.85rem;
+            margin-top: 8px;
         }
 
-        .persona-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
+        .persona-select,
+        .provider-select,
+        .model-select {
+            width: 100%;
             padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
+            border-radius: 6px;
+            border: 1px solid var(--log-border);
+            background: var(--container-bg);
+            color: var(--text);
         }
 
-        .persona-select:focus {
-            outline: 2px solid #2563eb;
+        .model-row {
+            margin-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
-        .llm-selector { 
-            margin: 20px 0; 
-            text-align: center; 
-        }
-        .provider-select, .model-select {
-            background-color: var(--container-bg);
-            color: var(--text);
-            border: 1px solid var(--log-border);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-left: 10px;
-            width: 250px;
-            cursor: pointer;
-        }
-        .provider-select:focus, .model-select:focus {
+
+        .persona-select:focus,
+        .provider-select:focus,
+        .model-select:focus {
             outline: 2px solid #2563eb;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
+    <div class="tabbed-dashboard">
         <div class="theme-toggle" role="group" aria-label="Theme toggle">
             <label class="switch" aria-label="Toggle theme">
                 <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
@@ -501,120 +681,174 @@
         </div>
         <h1>🤖 Scam Bait Bot Control Panel</h1>
 
-        <div class="warning">
-            <strong>⚠️ Important:</strong> This bot is for educational purposes only.
-            Make sure to use a secondary Telegram account, not your personal one,
-            as this could result in account suspension.
-        </div>
+        <nav class="tab-nav" role="tablist" aria-label="Dashboard sections">
+            <button type="button" class="tab-button" role="tab" id="tab-overview-tab" aria-selected="true"
+                aria-controls="tab-overview" data-tab-target="overview">Overview</button>
+            <button type="button" class="tab-button" role="tab" id="tab-outreach-tab" aria-selected="false"
+                aria-controls="tab-outreach" data-tab-target="outreach" tabindex="-1">Outreach</button>
+            <button type="button" class="tab-button" role="tab" id="tab-configuration-tab" aria-selected="false"
+                aria-controls="tab-configuration" data-tab-target="configuration" tabindex="-1">Configuration</button>
+            <button type="button" class="tab-button" role="tab" id="tab-metrics-tab" aria-selected="false"
+                aria-controls="tab-metrics" data-tab-target="metrics" tabindex="-1">Metrics</button>
+        </nav>
 
-        <div id="status" class="status stopped">
-            Status: Checking...
-        </div>
-
-        <div class="personality-selector">
-            <label for="personaSelect">Bot Personality:</label>
-            <select id="personaSelect" class="persona-select">
-                <option value="">Loading personalities...</option>
-            </select>
-        </div>
-
-        <div class="llm-selector">
-            <label for="providerSelect">LLM Provider:</label>
-            <select id="providerSelect" class="provider-select">
-                <option value="pollinations">Pollinations</option>
-                <option value="openrouter">OpenRouter</option>
-            </select>
-        </div>
-        <div class="llm-selector" id="openrouterModelRow" style="display:none">
-            <label for="openrouterModelSelect">OpenRouter Model:</label>
-            <select id="openrouterModelSelect" class="model-select">
-                <option value="">Loading models...</option>
-            </select>
-        </div>
-
-        <section class="group-section" aria-label="Group outreach tools">
-            <h2>Group Honeypot Outreach</h2>
-            <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
-            <div class="group-controls">
-                <label for="groupSelect">Target group:</label>
-                <select id="groupSelect" class="group-select">
-                    <option value="">Choose a group…</option>
-                </select>
-                <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
-                <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
-            </div>
-        </section>
-
-        <div class="controls">
-            <button id="startBtn" class="start-btn">Start Bot</button>
-            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
-        </div>
-
-        <section class="metrics-section" aria-label="Bot metrics dashboard">
-            <div class="metrics-header">
-                <h2>Metrics Overview</h2>
-                <small id="metricsTimestamp">Last updated: --</small>
-            </div>
-            <div class="metrics-grid" role="list">
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Uptime</span>
-                    <span class="metric-value" id="metricUptime">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Unique Contacts</span>
-                    <span class="metric-value" id="metricContacts">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Inbound Messages</span>
-                    <span class="metric-value" id="metricInbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Outbound Messages</span>
-                    <span class="metric-value" id="metricOutbound">--</span>
-                </div>
-                <div class="metric-card" role="listitem">
-                    <span class="metric-label">Avg Response Delay</span>
-                    <span class="metric-value" id="metricResponse">--</span>
-                </div>
-            </div>
-
-            <div class="metrics-visuals">
-                <div class="chart-card">
-                    <h3>Message Throughput</h3>
-                    <div class="chart-container">
-                        <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+        <div class="tab-panels">
+            <section id="tab-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview-tab"
+                data-tab-panel="overview">
+                <div class="overview-grid">
+                    <div class="overview-card warning-card" role="note">
+                        <strong>⚠️ Important:</strong>
+                        <p>Use a secondary Telegram account only—running the bot on a personal account may lead to
+                            suspension.</p>
+                    </div>
+                    <div class="overview-card">
+                        <div class="panel-header">
+                            <h2>Bot Status</h2>
+                            <span class="muted">Updated automatically</span>
+                        </div>
+                        <div id="status" class="status stopped">Status: Checking...</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="panel-header">
+                            <h2>Controls</h2>
+                            <span class="muted">Manage the bot lifecycle</span>
+                        </div>
+                        <div class="controls">
+                            <button id="startBtn" class="start-btn">Start Bot</button>
+                            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
+                        </div>
                     </div>
                 </div>
-                <div class="chart-card">
-                    <h3>LLM Provider Breakdown</h3>
-                    <div class="chart-container">
-                        <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+
+                <div class="log-panel" aria-live="polite">
+                    <div class="log-panel-header">
+                        <h2>Activity Log</h2>
+                        <button type="button" id="logToggleBtn" class="log-toggle" aria-expanded="false"
+                            aria-controls="log">Expand log</button>
+                    </div>
+                    <div class="log" id="log">
+                        <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="leaderboard-card">
-                <h3>Recent Contacts</h3>
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Contact</th>
-                            <th scope="col">Inbound</th>
-                            <th scope="col">Outbound</th>
-                            <th scope="col">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboardBody">
-                        <tr>
-                            <td colspan="4">No data yet</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <section id="tab-outreach" class="tab-panel is-hidden" role="tabpanel"
+                aria-labelledby="tab-outreach-tab" data-tab-panel="outreach">
+                <div class="panel-header">
+                    <h2>Group Outreach</h2>
+                    <span class="muted">Blend honeypot messages into live chats</span>
+                </div>
+                <section class="group-section" aria-label="Group outreach tools">
+                    <h3>Honeypot Drop</h3>
+                    <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
+                    <div class="group-controls">
+                        <label for="groupSelect">Target group:</label>
+                        <select id="groupSelect" class="group-select">
+                            <option value="">Choose a group…</option>
+                        </select>
+                        <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
+                        <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
+                    </div>
+                </section>
+            </section>
 
-        <div class="log" id="log">
-            <div>Bot control panel loaded. Click "Start Bot" to begin.</div>
+            <section id="tab-configuration" class="tab-panel is-hidden" role="tabpanel"
+                aria-labelledby="tab-configuration-tab" data-tab-panel="configuration">
+                <div class="panel-header">
+                    <h2>Bot Configuration</h2>
+                    <span class="muted">Tune persona and intelligence provider</span>
+                </div>
+                <div class="configuration-grid">
+                    <div class="selector-card">
+                        <label for="personaSelect">Bot Personality</label>
+                        <select id="personaSelect" class="persona-select">
+                            <option value="">Loading personalities...</option>
+                        </select>
+                        <p class="selector-helper">Choose how the bot sounds when chatting with scammers.</p>
+                    </div>
+                    <div class="selector-card">
+                        <label for="providerSelect">LLM Provider</label>
+                        <select id="providerSelect" class="provider-select">
+                            <option value="pollinations">Pollinations</option>
+                            <option value="openrouter">OpenRouter</option>
+                        </select>
+                        <p class="selector-helper">Switch between available language model backends.</p>
+                        <div id="openrouterModelRow" class="model-row" style="display:none">
+                            <label for="openrouterModelSelect">OpenRouter Model</label>
+                            <select id="openrouterModelSelect" class="model-select">
+                                <option value="">Loading models...</option>
+                            </select>
+                            <p class="selector-helper">Pick a specific model to fine-tune response style.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-metrics" class="tab-panel is-hidden" role="tabpanel"
+                aria-labelledby="tab-metrics-tab" data-tab-panel="metrics">
+                <div class="panel-header">
+                    <h2>Performance Metrics</h2>
+                    <span class="badge" id="metricsTimestamp">Last updated: --</span>
+                </div>
+                <div class="metrics-grid" role="list">
+                    <div class="metric-card" role="listitem">
+                        <span class="metric-label">Uptime</span>
+                        <span class="metric-value" id="metricUptime">--</span>
+                    </div>
+                    <div class="metric-card" role="listitem">
+                        <span class="metric-label">Unique Contacts</span>
+                        <span class="metric-value" id="metricContacts">--</span>
+                    </div>
+                    <div class="metric-card" role="listitem">
+                        <span class="metric-label">Inbound Messages</span>
+                        <span class="metric-value" id="metricInbound">--</span>
+                    </div>
+                    <div class="metric-card" role="listitem">
+                        <span class="metric-label">Outbound Messages</span>
+                        <span class="metric-value" id="metricOutbound">--</span>
+                    </div>
+                    <div class="metric-card" role="listitem">
+                        <span class="metric-label">Avg Response Delay</span>
+                        <span class="metric-value" id="metricResponse">--</span>
+                    </div>
+                </div>
+
+                <div class="metrics-visuals">
+                    <div class="chart-stack">
+                        <div class="chart-card">
+                            <h3>Message Throughput</h3>
+                            <div class="chart-container">
+                                <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>LLM Provider Breakdown</h3>
+                            <div class="chart-container">
+                                <canvas id="providerChart" aria-label="LLM provider request distribution"
+                                    role="img"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="leaderboard-card">
+                        <h3>Recent Contacts</h3>
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Contact</th>
+                                    <th scope="col">Inbound</th>
+                                    <th scope="col">Outbound</th>
+                                    <th scope="col">Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardBody">
+                                <tr>
+                                    <td colspan="4">No data yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 

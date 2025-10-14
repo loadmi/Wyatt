@@ -40,6 +40,109 @@ function withAlpha(color, alpha) {
     return trimmed;
 }
 
+function initTabInterface() {
+    const tabButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
+    const tabPanels = new Map();
+    document.querySelectorAll('[data-tab-panel]').forEach(panel => {
+        const key = panel.getAttribute('data-tab-panel');
+        if (key) {
+            tabPanels.set(key, panel);
+        }
+    });
+
+    if (!tabButtons.length || !tabPanels.size) {
+        return null;
+    }
+
+    const storageKey = 'dashboard-active-tab';
+
+    const updateButtonState = (button, isActive) => {
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        button.setAttribute('tabindex', isActive ? '0' : '-1');
+    };
+
+    const updatePanelState = (panel, isActive) => {
+        panel.classList.toggle('is-hidden', !isActive);
+        panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+    };
+
+    const activateTab = (target, { focusButton = false } = {}) => {
+        if (!target || !tabPanels.has(target)) {
+            return;
+        }
+        tabButtons.forEach(button => {
+            const isActive = button.getAttribute('data-tab-target') === target;
+            updateButtonState(button, isActive);
+            if (isActive && focusButton) {
+                button.focus();
+            }
+        });
+        tabPanels.forEach((panel, key) => {
+            updatePanelState(panel, key === target);
+        });
+        try {
+            localStorage.setItem(storageKey, target);
+        } catch (error) {
+            // Ignore storage errors (e.g., private browsing)
+        }
+    };
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const target = button.getAttribute('data-tab-target');
+            activateTab(target);
+        });
+        button.addEventListener('keydown', event => {
+            if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
+                return;
+            }
+            event.preventDefault();
+            const currentIndex = tabButtons.indexOf(button);
+            if (currentIndex === -1) return;
+            const direction = event.key === 'ArrowRight' ? 1 : -1;
+            const nextIndex = (currentIndex + direction + tabButtons.length) % tabButtons.length;
+            const nextButton = tabButtons[nextIndex];
+            if (nextButton) {
+                const target = nextButton.getAttribute('data-tab-target');
+                activateTab(target, { focusButton: true });
+            }
+        });
+    });
+
+    let initialTab = null;
+    try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored && tabPanels.has(stored)) {
+            initialTab = stored;
+        }
+    } catch (error) {
+        initialTab = null;
+    }
+
+    if (!initialTab && tabButtons[0]) {
+        initialTab = tabButtons[0].getAttribute('data-tab-target');
+    }
+
+    if (initialTab) {
+        activateTab(initialTab);
+    }
+
+    return { activateTab };
+}
+
+function initLogToggle() {
+    const logContainer = document.getElementById('log');
+    const toggleButton = document.getElementById('logToggleBtn');
+    if (!logContainer || !toggleButton) {
+        return;
+    }
+    toggleButton.addEventListener('click', () => {
+        const expanded = logContainer.classList.toggle('is-expanded');
+        toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggleButton.textContent = expanded ? 'Collapse log' : 'Expand log';
+    });
+}
+
 function formatDuration(ms) {
     if (!Number.isFinite(ms) || ms <= 0) return '—';
     const totalSeconds = Math.floor(ms / 1000);
@@ -806,7 +909,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     applyTheme(theme);
 
+    const tabs = initTabInterface();
+    initLogToggle();
+
     const controller = new BotController();
+
+    window.showDashboardTab = function showDashboardTab(tabName) {
+        if (tabs && typeof tabName === 'string') {
+            tabs.activateTab(tabName, { focusButton: true });
+        }
+    };
 
     if (toggle) {
         toggle.checked = theme === 'dark';
