@@ -2,6 +2,7 @@ import { appConfig } from "../config";
 import { recordLLMRequest } from "../metrics";
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+type SentimentSource = { author: string; text: string };
 
 function looksLikeJsonError(text: string): boolean {
   try {
@@ -137,6 +138,81 @@ async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; sta
   }
   recordLLMRequest(provider || 'pollinations', result.ok);
   return result;
+}
+
+function normalizeConversationEntries(entries: SentimentSource[]): SentimentSource[] {
+  return entries
+    .map((entry) => {
+      const author = (entry?.author || '').toString().trim() || 'Participant';
+      const text = (entry?.text || '').toString().replace(/\s+/g, ' ').trim();
+      return { author, text };
+    })
+    .filter((entry) => entry.text.length > 0);
+}
+
+export async function generateGroupSentimentMessage(entries: SentimentSource[]): Promise<string> {
+  const sanitized = normalizeConversationEntries(entries);
+  if (sanitized.length === 0) {
+    return 'Hey everyone! Just dropping by to see how things are going.';
+  }
+
+  const fallbackResponses = [
+    'Hope everyone is having a smooth one—just checking in quietly. 👋',
+    'Just touching base with the group—hope things are rolling along nicely.',
+    'Appreciate the vibes here, figured I’d chime in and stay in the loop.',
+  ];
+  const fallback = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+
+  const maxChars = Number.isFinite(Number(process.env.GROUP_SENTIMENT_PROMPT_CHARS))
+    ? Number(process.env.GROUP_SENTIMENT_PROMPT_CHARS)
+    : 5600;
+
+  let running = 0;
+  const selected: SentimentSource[] = [];
+  for (let i = sanitized.length - 1; i >= 0; i -= 1) {
+    const entry = sanitized[i];
+    const contribution = entry.author.length + entry.text.length + 5;
+    if (selected.length > 0 && running + contribution > maxChars) {
+      break;
+    }
+    selected.push(entry);
+    running += contribution;
+    if (selected.length >= 80) {
+      break;
+    }
+  }
+  selected.reverse();
+
+  const transcript = selected
+    .map((entry, idx) => `${idx + 1}. ${entry.author}: ${entry.text}`)
+    .join('\n');
+
+  const instruction =
+    'You study the provided group conversation and craft a short message that subtly matches the overall tone and sentiment.' +
+    ' Blend in, avoid sounding like a bot, and keep it under 3 short sentences. Do not mention analysis or that this is generated.' +
+    ' Keep it friendly, neutral, and unsuspicious.';
+
+  const prompt: ChatMessage[] = [
+    { role: 'system', content: instruction },
+    {
+      role: 'user',
+      content:
+        'Here is the recent chat transcript, oldest to newest. Compose one stealthy reply that fits the average mood:\n' +
+        transcript,
+    },
+  ];
+
+  const trimmed = trimMessagesToLimit(prompt, maxChars, Math.min(2000, maxChars));
+
+  console.log('[LLM] Request: group sentiment mimic');
+  const result = await callProvider(trimmed);
+  if (result.ok && result.text) {
+    console.log('[LLM] Final: group sentiment response');
+    return result.text;
+  }
+
+  console.log('[LLM] Final: fallback group sentiment response');
+  return fallback;
 }
 
 export async function getResponse(messages: ChatMessage[]): Promise<string> {

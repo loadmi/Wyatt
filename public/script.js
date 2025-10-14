@@ -96,12 +96,25 @@ class BotController {
         this.numberFormatter = new Intl.NumberFormat();
         this.metricsInterval = null;
         this.lastMetricsError = null;
+        this.groupSelect = document.getElementById('groupSelect');
+        this.sendGroupBtn = document.getElementById('sendGroupBtn');
+        this.refreshGroupsBtn = document.getElementById('refreshGroupsBtn');
+        this.isRunning = false;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
         this.personaSelect.addEventListener('change', () => this.changePersona());
         this.providerSelect.addEventListener('change', () => this.changeProvider());
         this.openrouterModelSelect.addEventListener('change', () => this.changeOpenRouterModel());
+        if (this.groupSelect) {
+            this.groupSelect.addEventListener('change', () => this.onGroupSelectionChange());
+        }
+        if (this.sendGroupBtn) {
+            this.sendGroupBtn.addEventListener('click', () => this.sendGroupSentiment());
+        }
+        if (this.refreshGroupsBtn) {
+            this.refreshGroupsBtn.addEventListener('click', () => this.loadGroups(true));
+        }
 
         // Check initial status
         this.checkStatus();
@@ -116,6 +129,7 @@ class BotController {
         setInterval(() => this.checkStatus(), 5000);
 
         this.setupMetricsDashboard();
+        this.updateGroupControls();
     }
 
     async checkStatus() {
@@ -129,17 +143,58 @@ class BotController {
     }
 
     updateStatus(isRunning) {
+        const changed = this.isRunning !== isRunning;
+        this.isRunning = isRunning;
         if (isRunning) {
             this.statusDiv.textContent = 'Status: Running';
             this.statusDiv.className = 'status running';
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
+            this.updateGroupControls();
+            if (changed) {
+                this.loadGroups(false);
+            }
         } else {
             this.statusDiv.textContent = 'Status: Stopped';
             this.statusDiv.className = 'status stopped';
             this.startBtn.disabled = false;
             this.stopBtn.disabled = true;
+            this.updateGroupControls();
         }
+    }
+
+    updateGroupControls() {
+        const select = this.groupSelect;
+        const refreshBtn = this.refreshGroupsBtn;
+        const sendBtn = this.sendGroupBtn;
+        if (!select || !refreshBtn || !sendBtn) return;
+
+        if (!this.isRunning) {
+            this.setGroupPlaceholder('Start the bot to load groups');
+            select.disabled = true;
+            refreshBtn.disabled = true;
+            sendBtn.disabled = true;
+            return;
+        }
+
+        refreshBtn.disabled = false;
+        select.disabled = false;
+        this.onGroupSelectionChange();
+    }
+
+    setGroupPlaceholder(text) {
+        if (!this.groupSelect) return;
+        this.groupSelect.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = text;
+        this.groupSelect.appendChild(option);
+    }
+
+    onGroupSelectionChange() {
+        if (!this.groupSelect || !this.sendGroupBtn) return;
+        const value = this.groupSelect.value;
+        this.sendGroupBtn.disabled = !value;
     }
 
     async startBot() {
@@ -193,6 +248,87 @@ class BotController {
         } catch (error) {
             this.log('❌ Error stopping bot: ' + error.message);
             this.stopBtn.disabled = false;
+        }
+    }
+
+    async loadGroups(logSuccess = true) {
+        if (!this.groupSelect || !this.refreshGroupsBtn || !this.sendGroupBtn) return;
+        if (!this.isRunning) {
+            this.updateGroupControls();
+            return;
+        }
+
+        this.groupSelect.disabled = true;
+        this.refreshGroupsBtn.disabled = true;
+        this.sendGroupBtn.disabled = true;
+        this.setGroupPlaceholder('Loading groups...');
+
+        try {
+            const response = await fetch('/api/groups', { cache: 'no-store' });
+            const data = await response.json();
+            if (data.success && Array.isArray(data.groups)) {
+                this.populateGroupSelect(data.groups);
+                if (logSuccess) {
+                    this.log(`Loaded ${data.groups.length} group(s)`);
+                }
+            } else {
+                this.setGroupPlaceholder(data.message || 'No groups found');
+                this.log('❌ Failed to load groups: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            this.setGroupPlaceholder('Unable to load groups');
+            this.log('❌ Error loading groups: ' + error.message);
+        } finally {
+            this.refreshGroupsBtn.disabled = false;
+            this.groupSelect.disabled = false;
+            this.onGroupSelectionChange();
+        }
+    }
+
+    populateGroupSelect(groups) {
+        if (!this.groupSelect) return;
+        this.groupSelect.innerHTML = '';
+        if (!Array.isArray(groups) || groups.length === 0) {
+            this.setGroupPlaceholder('No groups available');
+            return;
+        }
+        const fragment = document.createDocumentFragment();
+        groups.forEach(group => {
+            const option = document.createElement('option');
+            option.value = group.id;
+            option.textContent = `${group.title} (${group.type})`;
+            fragment.appendChild(option);
+        });
+        this.groupSelect.appendChild(fragment);
+        this.onGroupSelectionChange();
+    }
+
+    async sendGroupSentiment() {
+        if (!this.groupSelect || !this.sendGroupBtn) return;
+        const groupId = this.groupSelect.value;
+        if (!groupId) {
+            this.log('Select a group before sending a message.');
+            return;
+        }
+        const label = this.groupSelect.options[this.groupSelect.selectedIndex]?.text || groupId;
+        this.sendGroupBtn.disabled = true;
+        this.log(`Crafting sentiment-matching message for ${label}...`);
+        try {
+            const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/sentiment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await response.json();
+            if (data.success) {
+                const preview = typeof data.preview === 'string' ? ` Preview: "${data.preview}"` : '';
+                this.log(`✅ Message sent to ${label}.${preview}`);
+            } else {
+                this.log('❌ ' + (data.message || 'Failed to send group message'));
+            }
+        } catch (error) {
+            this.log('❌ Error sending group message: ' + error.message);
+        } finally {
+            this.sendGroupBtn.disabled = !this.groupSelect.value;
         }
     }
 

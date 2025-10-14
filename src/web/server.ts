@@ -1,7 +1,14 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
 import path from "path";
-import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
+import {
+  startBot,
+  stopBot,
+  getStatus,
+  startBotNonInteractive,
+  listGroups,
+  sendGroupSentimentMessage,
+} from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
@@ -63,6 +70,25 @@ export function startWebServer(): void {
 
   app.post("/api/stop", async (req: Request, res: Response) => {
     const result = await stopBot();
+    res.status(result.success ? 200 : 500).json(result);
+  });
+
+  app.get("/api/groups", async (req: Request, res: Response) => {
+    try {
+      const groups = await listGroups();
+      res.json({ success: true, groups });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to list groups";
+      res.status(503).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/groups/:groupId/sentiment", async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    if (!groupId) {
+      return res.status(400).json({ success: false, message: "Missing group identifier" });
+    }
+    const result = await sendGroupSentimentMessage(groupId);
     res.status(result.success ? 200 : 500).json(result);
   });
 

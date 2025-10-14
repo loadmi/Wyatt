@@ -231,9 +231,68 @@
             background-color: var(--button-stop-bg-hover);
         }
 
+        .neutral-btn {
+            background: transparent;
+            border: 1px solid var(--log-border);
+            color: var(--text);
+        }
+
+        .neutral-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
         button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+
+        .group-outreach {
+            margin: 35px 0 10px;
+            padding: 20px;
+            border-radius: 10px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            box-shadow: 0 2px 6px var(--shadow);
+        }
+
+        .group-outreach h2 {
+            margin: 0 0 8px;
+            color: var(--heading);
+        }
+
+        .group-outreach p {
+            margin: 0 0 16px;
+            font-size: 14px;
+            color: var(--heading);
+            opacity: 0.8;
+        }
+
+        .group-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .group-controls select {
+            flex: 1 1 240px;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--log-border);
+            background: var(--container-bg);
+            color: var(--text);
+        }
+
+        .group-controls button {
+            flex: 0 0 auto;
+            padding: 10px 18px;
+            font-size: 15px;
+        }
+
+        .group-hint {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--warning-text);
         }
 
         .metrics-section {
@@ -450,6 +509,19 @@
             <select id="openrouterModelSelect" class="model-select">
                 <option value="">Loading models...</option>
             </select>
+        </div>
+
+        <div class="group-outreach">
+            <h2>Group Outreach</h2>
+            <p>Select a group to quietly drop a sentiment-matching lure.</p>
+            <div class="group-controls">
+                <select id="groupSelect">
+                    <option value="">Start the bot to load groups</option>
+                </select>
+                <button id="refreshGroupsBtn" type="button" class="neutral-btn">Refresh</button>
+                <button id="sendGroupBtn" type="button" class="start-btn" disabled>Send Message</button>
+            </div>
+            <div class="group-hint">Requires the bot to be running with access to your Telegram groups.</div>
         </div>
 
         <div class="controls">
