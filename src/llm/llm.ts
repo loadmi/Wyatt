@@ -198,19 +198,22 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
 
   const transcript = normalized.join('\n');
   const systemPrompt = [
-    'You craft short Telegram messages that blend into a group conversation.',
-    'Read the provided transcript of recent chat messages and infer the average sentiment, tone, and energy level.',
-    'Respond with a single message (1-3 short sentences, under 320 characters) that matches that average vibe.',
-    'Mirror the predominant language, avoid mentioning that you analysed anything, and do not include apologies or meta commentary.',
+    'You write low-key Telegram messages that blend into a group chat.',
+    'Read the transcript of recent messages and match the group’s vibe and language.',
+    'Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.',
+    'If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.',
+    'One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.',
+    'Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.',
+    'Output only the final message.',
   ].join(' ');
 
   const userPrompt = [
     'Recent group conversation (oldest first):',
     transcript,
     '',
-    'Write the stealthy message now. Output only the crafted message.',
+    'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
   ].join('\n');
-
+console.log(userPrompt)
   const reply = await requestLLMCompletion(
     [
       { role: 'system', content: systemPrompt },
