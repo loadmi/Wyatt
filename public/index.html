@@ -203,6 +203,86 @@
             margin: 30px 0;
         }
 
+        .group-section {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+        }
+
+        .group-section h2 {
+            margin: 0 0 8px 0;
+            font-size: 1.2rem;
+        }
+
+        .group-section p {
+            margin: 0;
+            font-size: 0.92rem;
+            opacity: 0.8;
+        }
+
+        .group-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .group-controls label {
+            font-weight: 600;
+        }
+
+        .group-select {
+            flex: 1;
+            min-width: 220px;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--log-border);
+            background: var(--container-bg);
+            color: var(--text);
+        }
+
+        .group-action-btn,
+        .group-refresh-btn {
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .group-action-btn {
+            border: none;
+            background: #2563eb;
+            color: #ffffff;
+        }
+
+        .group-action-btn:hover:enabled {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .group-refresh-btn {
+            border: 1px solid var(--log-border);
+            background: transparent;
+            color: var(--text);
+        }
+
+        .group-refresh-btn:hover:enabled {
+            background: rgba(37, 99, 235, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .group-action-btn:disabled,
+        .group-refresh-btn:disabled,
+        .group-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         button {
             padding: 12px 24px;
             border: none;
@@ -451,6 +531,19 @@
                 <option value="">Loading models...</option>
             </select>
         </div>
+
+        <section class="group-section" aria-label="Group outreach tools">
+            <h2>Group Honeypot Outreach</h2>
+            <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
+            <div class="group-controls">
+                <label for="groupSelect">Target group:</label>
+                <select id="groupSelect" class="group-select">
+                    <option value="">Choose a group…</option>
+                </select>
+                <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
+                <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
+            </div>
+        </section>
 
         <div class="controls">
             <button id="startBtn" class="start-btn">Start Bot</button>

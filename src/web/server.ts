@@ -1,7 +1,14 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
 import path from "path";
-import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
+import {
+  startBot,
+  stopBot,
+  getStatus,
+  startBotNonInteractive,
+  listTelegramGroups,
+  sendSentimentToGroup,
+} from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
@@ -54,6 +61,32 @@ export function startWebServer(): void {
 
   app.get("/api/metrics", (req: Request, res: Response) => {
     res.json(getSnapshot());
+  });
+
+  app.get("/api/telegram/groups", async (req: Request, res: Response) => {
+    try {
+      const groups = await listTelegramGroups();
+      res.json({ success: true, groups });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load group list.";
+      const status = message.includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/telegram/groups/:groupId/sentiment", async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    if (!groupId) {
+      return res.status(400).json({ success: false, message: "Group ID is required." });
+    }
+
+    const result = await sendSentimentToGroup(groupId);
+    const status = result.success
+      ? 201
+      : result.message.includes("not running")
+        ? 409
+        : 500;
+    res.status(status).json(result);
   });
 
   app.post("/api/start", async (req: Request, res: Response) => {
