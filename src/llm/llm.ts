@@ -1,7 +1,16 @@
 import { appConfig } from "../config";
 import { recordLLMRequest } from "../metrics";
 
-type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+function getInputLimits() {
+  const mi = Number(process.env.LLM_MAX_INPUT_CHARS);
+  const ms = Number(process.env.LLM_MAX_SYSTEM_CHARS);
+  return {
+    maxInput: Number.isFinite(mi) ? mi : 4900,
+    maxSystem: Number.isFinite(ms) ? ms : 4900,
+  };
+}
 
 function looksLikeJsonError(text: string): boolean {
   try {
@@ -139,11 +148,85 @@ async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; sta
   return result;
 }
 
+export async function requestLLMCompletion(
+  messages: ChatMessage[],
+  options?: { trimForProvider?: boolean; fallback?: string }
+): Promise<string> {
+  const { maxInput, maxSystem } = getInputLimits();
+  const provider = ((appConfig() as any).llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  let toSend = messages;
+
+  const shouldTrim = options?.trimForProvider !== false && provider === 'pollinations';
+  if (shouldTrim) {
+    const origChars = countChars(messages);
+    const prepared = trimMessagesToLimit(messages, maxInput, maxSystem);
+    const prepChars = countChars(prepared);
+    if (origChars !== prepChars || prepared.length !== messages.length) {
+      console.log(`[LLM] Compose: chars=${origChars}->${prepChars} msgs=${messages.length}->${prepared.length}`);
+    }
+    toSend = prepared;
+  } else if (provider !== 'pollinations') {
+    console.log(`[LLM] Compose: no trim for provider=${provider}`);
+  }
+
+  const response = await callProvider(toSend);
+  if (response.ok && response.text) {
+    return response.text;
+  }
+
+  return options?.fallback ?? '';
+}
+
+export type SentimentSample = {
+  speaker: string;
+  text: string;
+  timestamp?: number;
+};
+
+export async function generateSentimentMessage(samples: SentimentSample[]): Promise<string> {
+  const fallback = 'Hey everyone—just checking in and keeping the energy going!';
+  if (!samples || samples.length === 0) {
+    return fallback;
+  }
+
+  const normalized = samples.map((sample) => {
+    const speaker = (sample.speaker || 'Participant').trim();
+    const text = (sample.text || '').trim();
+    const ts = sample.timestamp ? new Date(sample.timestamp).toISOString() : '';
+    return ts ? `[${ts}] ${speaker}: ${text}` : `${speaker}: ${text}`;
+  });
+
+  const transcript = normalized.join('\n');
+  const systemPrompt = [
+    'You write low-key Telegram messages that blend into a group chat.',
+    'Read the transcript of recent messages and match the group’s vibe and language.',
+    'Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.',
+    'If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.',
+    'One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.',
+    'Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.',
+    'Output only the final message.',
+  ].join(' ');
+
+  const userPrompt = [
+    'Recent group conversation (oldest first):',
+    transcript,
+    '',
+    'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
+  ].join('\n');
+console.log(userPrompt)
+  const reply = await requestLLMCompletion(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    { fallback }
+  );
+
+  return reply && reply.trim().length > 0 ? reply.trim() : fallback;
+}
+
 export async function getResponse(messages: ChatMessage[]): Promise<string> {
-  const mi = Number(process.env.LLM_MAX_INPUT_CHARS);
-  const ms = Number(process.env.LLM_MAX_SYSTEM_CHARS);
-  const MAX_INPUT_CHARS = Number.isFinite(mi) ? mi : 4900;
-  const MAX_SYSTEM_CHARS = Number.isFinite(ms) ? ms : 4900;
+  const { maxInput, maxSystem } = getInputLimits();
   const FALLBACKS = [
     "Well now, that’s got me smiling—what’s the story then, dear? 😊",
     "Goodness, that sounds lively—what happened next, love? 💬",
@@ -157,7 +240,7 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
   let toSend = messages as ChatMessage[];
   if (provider === 'pollinations') {
     const origChars = countChars(messages as ChatMessage[]);
-    const prepared = trimMessagesToLimit(messages as ChatMessage[], MAX_INPUT_CHARS, MAX_SYSTEM_CHARS);
+    const prepared = trimMessagesToLimit(messages as ChatMessage[], maxInput, maxSystem);
     const prepChars = countChars(prepared);
     if (origChars !== prepChars || prepared.length !== (messages as ChatMessage[]).length) {
       console.log(`[LLM] Compose: chars=${origChars}->${prepChars} msgs=${(messages as ChatMessage[]).length}->${prepared.length}`);
