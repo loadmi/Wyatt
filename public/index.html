@@ -395,6 +395,36 @@
         .provider-select:focus, .model-select:focus {
             outline: 2px solid #2563eb;
         }
+        .group-selector {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        .group-select {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            width: 260px;
+            cursor: pointer;
+        }
+        .group-select:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .group-send-btn {
+            background-color: #2563eb;
+            color: var(--btn-text);
+        }
+        .group-send-btn:hover {
+            background-color: #1d4ed8;
+        }
     </style>
 </head>
 
@@ -450,6 +480,14 @@
             <select id="openrouterModelSelect" class="model-select">
                 <option value="">Loading models...</option>
             </select>
+        </div>
+
+        <div class="group-selector">
+            <label for="groupSelect">Group Honeypot:</label>
+            <select id="groupSelect" class="group-select" disabled>
+                <option value="">Start the bot to load group chats</option>
+            </select>
+            <button id="groupSendBtn" class="group-send-btn" disabled>Send Blend Message</button>
         </div>
 
         <div class="controls">

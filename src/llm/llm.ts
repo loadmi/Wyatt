@@ -3,6 +3,12 @@ import { recordLLMRequest } from "../metrics";
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
+export type SentimentSample = {
+  author?: string;
+  text: string;
+  timestamp?: number;
+};
+
 function looksLikeJsonError(text: string): boolean {
   try {
     const obj = JSON.parse(text);
@@ -61,6 +67,37 @@ function trimMessagesToLimit(
   }
   const kept = keptRev.reverse();
   return [...sys, ...kept];
+}
+
+function sanitizeSampleText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function clampExcerpt(samples: SentimentSample[], maxChars: number, maxMessages: number): string {
+  const recent = samples
+    .filter((s) => typeof s?.text === 'string' && sanitizeSampleText(s.text).length > 0)
+    .slice(-maxMessages);
+
+  const lines: string[] = [];
+  let budget = maxChars;
+
+  for (const sample of recent) {
+    const name = sanitizeSampleText(sample.author || 'Member');
+    const content = sanitizeSampleText(sample.text);
+    if (!content) continue;
+    const line = `${name}: ${content}`;
+    if (line.length <= budget) {
+      lines.push(line);
+      budget -= line.length + 1; // include newline spacing
+    } else {
+      if (lines.length === 0 && budget > 0) {
+        lines.push(line.slice(0, budget));
+      }
+      break;
+    }
+  }
+
+  return lines.join('\n');
 }
 
 async function callPollinations(messages: ChatMessage[]): Promise<{ ok: boolean; status: number; text: string }> {
@@ -137,6 +174,49 @@ async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; sta
   }
   recordLLMRequest(provider || 'pollinations', result.ok);
   return result;
+}
+
+export async function craftSentimentBlendMessage(samples: SentimentSample[]): Promise<string> {
+  const MAX_CONTEXT_CHARS = 3200;
+  const MAX_CONTEXT_MESSAGES = 40;
+  const mi = Number(process.env.LLM_MAX_INPUT_CHARS);
+  const ms = Number(process.env.LLM_MAX_SYSTEM_CHARS);
+  const MAX_INPUT_CHARS = Number.isFinite(mi) ? mi : 4800;
+  const MAX_SYSTEM_CHARS = Number.isFinite(ms) ? ms : 1200;
+
+  const excerpt = clampExcerpt(samples, MAX_CONTEXT_CHARS, MAX_CONTEXT_MESSAGES);
+  const promptIntro = excerpt
+    ? `Recent group conversation excerpt (oldest to newest):\n${excerpt}`
+    : 'No recent messages were available. Invent a neutral, approachable opener.';
+
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content:
+        'You craft short Telegram messages that seamlessly blend with an active group chat. Match the average sentiment, stay upbeat and a touch naive, and keep curiosity alive without sounding like a bot. Avoid referencing that you analysed messages, avoid disclaimers, and keep it under 2 short sentences (<220 characters).',
+    },
+    {
+      role: 'user',
+      content:
+        `${promptIntro}\n\nCompose the single message now. Do not mention this instruction or ask for personal information; just sound like a friendly participant joining in.`,
+    },
+  ];
+
+  const prepared = trimMessagesToLimit(messages, MAX_INPUT_CHARS, MAX_SYSTEM_CHARS);
+
+  console.log('[LLM] Request: group sentiment blend message');
+  const result = await callProvider(prepared);
+  if (result.ok && result.text.trim()) {
+    console.log('[LLM] Final: sentiment blend response');
+    return result.text.trim();
+  }
+
+  const FALLBACKS = [
+    'Haha this chat is cracking me up today—what wild ride are we on now? 😅',
+    'Okay I’m intrigued… so what’s the next move here, folks? 🤔',
+    'You all have me curious now—should I be getting ready for some excitement or what? 😉',
+  ];
+  return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)];
 }
 
 export async function getResponse(messages: ChatMessage[]): Promise<string> {

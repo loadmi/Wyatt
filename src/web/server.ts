@@ -1,7 +1,14 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
 import path from "path";
-import { startBot, stopBot, getStatus, startBotNonInteractive } from "../telegram/client";
+import {
+  startBot,
+  stopBot,
+  getStatus,
+  startBotNonInteractive,
+  listGroupChats,
+  broadcastGroupSentiment,
+} from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import { appConfig, setConfig } from "../config";
@@ -54,6 +61,27 @@ export function startWebServer(): void {
 
   app.get("/api/metrics", (req: Request, res: Response) => {
     res.json(getSnapshot());
+  });
+
+  app.get("/api/telegram/groups", async (req: Request, res: Response) => {
+    try {
+      const groups = await listGroupChats();
+      res.json({ success: true, groups });
+    } catch (e) {
+      const message = (e as any)?.message || "Unable to load group list.";
+      res.status(500).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/telegram/groups/:groupId/sentiment", async (req: Request, res: Response) => {
+    const { groupId } = req.params || {};
+    try {
+      const result = await broadcastGroupSentiment(groupId || "");
+      res.status(result.success ? 200 : 500).json(result);
+    } catch (e) {
+      const message = (e as any)?.message || "Failed to send message.";
+      res.status(500).json({ success: false, message });
+    }
   });
 
   app.post("/api/start", async (req: Request, res: Response) => {

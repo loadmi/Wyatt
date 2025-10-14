@@ -79,6 +79,8 @@ class BotController {
         this.providerSelect = document.getElementById('providerSelect');
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
         this.openrouterModelRow = document.getElementById('openrouterModelRow');
+        this.groupSelect = document.getElementById('groupSelect');
+        this.groupSendBtn = document.getElementById('groupSendBtn');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -96,12 +98,19 @@ class BotController {
         this.numberFormatter = new Intl.NumberFormat();
         this.metricsInterval = null;
         this.lastMetricsError = null;
+        this.groupsLoaded = false;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
         this.personaSelect.addEventListener('change', () => this.changePersona());
         this.providerSelect.addEventListener('change', () => this.changeProvider());
         this.openrouterModelSelect.addEventListener('change', () => this.changeOpenRouterModel());
+        if (this.groupSelect) {
+            this.groupSelect.addEventListener('change', () => this.updateGroupControls());
+        }
+        if (this.groupSendBtn) {
+            this.groupSendBtn.addEventListener('click', () => this.sendGroupBlend());
+        }
 
         // Check initial status
         this.checkStatus();
@@ -111,6 +120,8 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        this.resetGroupSelect('Start the bot to load group chats');
 
         // Check status every 5 seconds
         setInterval(() => this.checkStatus(), 5000);
@@ -134,11 +145,126 @@ class BotController {
             this.statusDiv.className = 'status running';
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
+            if (!this.groupsLoaded) {
+                this.loadGroupChats();
+            } else {
+                this.updateGroupControls();
+            }
         } else {
             this.statusDiv.textContent = 'Status: Stopped';
             this.statusDiv.className = 'status stopped';
             this.startBtn.disabled = false;
             this.stopBtn.disabled = true;
+            this.groupsLoaded = false;
+            this.resetGroupSelect('Start the bot to load group chats');
+        }
+    }
+
+    resetGroupSelect(placeholderText) {
+        if (!this.groupSelect) return;
+        this.groupSelect.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = placeholderText;
+        option.disabled = true;
+        option.selected = true;
+        this.groupSelect.appendChild(option);
+        this.groupSelect.disabled = true;
+        if (this.groupSendBtn) {
+            this.groupSendBtn.disabled = true;
+        }
+    }
+
+    updateGroupControls() {
+        if (!this.groupSelect || !this.groupSendBtn) return;
+        const hasChoice = !!this.groupSelect.value && !this.groupSelect.disabled;
+        this.groupSendBtn.disabled = !hasChoice;
+    }
+
+    async loadGroupChats() {
+        if (!this.groupSelect) return;
+        this.groupSelect.disabled = true;
+        if (this.groupSendBtn) {
+            this.groupSendBtn.disabled = true;
+        }
+        try {
+            const response = await fetch('/api/telegram/groups');
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to load group list');
+            }
+
+            const groups = Array.isArray(data.groups) ? data.groups : [];
+            this.groupSelect.innerHTML = '';
+
+            if (groups.length === 0) {
+                this.resetGroupSelect('No eligible groups found');
+                this.groupsLoaded = true;
+                this.log('⚠️ No eligible group chats detected');
+                return;
+            }
+
+            groups.forEach(group => {
+                const option = document.createElement('option');
+                option.value = group.id;
+                option.textContent = group.title || group.id;
+                this.groupSelect.appendChild(option);
+            });
+
+            this.groupSelect.disabled = false;
+            if (this.groupSendBtn) {
+                this.groupSendBtn.disabled = false;
+            }
+            this.groupsLoaded = true;
+            this.updateGroupControls();
+            this.log(`Group list loaded (${groups.length})`);
+        } catch (error) {
+            this.groupsLoaded = false;
+            this.resetGroupSelect('Unable to load group chats');
+            this.log('❌ ' + (error.message || 'Failed to load group chats'));
+        }
+    }
+
+    async sendGroupBlend() {
+        if (!this.groupSelect) {
+            this.log('❌ No group selector available');
+            return;
+        }
+        const targetId = this.groupSelect.value;
+        if (!targetId) {
+            this.log('⚠️ Select a group chat first');
+            return;
+        }
+
+        if (this.groupSendBtn) {
+            this.groupSendBtn.disabled = true;
+            this.groupSendBtn.textContent = 'Sending...';
+        }
+
+        try {
+            const encodedId = encodeURIComponent(targetId);
+            const response = await fetch(`/api/telegram/groups/${encodedId}/sentiment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                const label = data.groupTitle || (this.groupSelect.selectedOptions[0]?.textContent || targetId);
+                if (data.generated) {
+                    this.log(`✅ Sent honeypot message to "${label}": ${data.generated}`);
+                } else {
+                    this.log(`✅ Sent honeypot message to "${label}"`);
+                }
+            } else {
+                this.log('❌ ' + (data.message || 'Failed to send honeypot message'));
+            }
+        } catch (error) {
+            this.log('❌ Error sending honeypot message: ' + error.message);
+        } finally {
+            if (this.groupSendBtn) {
+                this.groupSendBtn.textContent = 'Send Blend Message';
+                this.groupSendBtn.disabled = !this.groupSelect.value;
+            }
         }
     }
 
