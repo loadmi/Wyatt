@@ -369,6 +369,12 @@
             color: var(--text);
         }
 
+        .panel-subtext {
+            margin: 6px 0 18px;
+            color: var(--subtle);
+            font-size: 0.9rem;
+        }
+
         .config-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -398,6 +404,195 @@
         select:focus {
             outline: 2px solid #2563eb;
             outline-offset: 1px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            background-color: var(--container-bg);
+            color: var(--text);
+            border: 1px solid var(--log-border);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: 2px solid #2563eb;
+            outline-offset: 1px;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 90px;
+        }
+
+        .account-management {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+        }
+
+        .account-list {
+            flex: 1 1 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .account-card {
+            background: var(--tab-bg);
+            border: 1px solid var(--tab-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .account-card.active {
+            border-color: rgba(37, 99, 235, 0.45);
+            box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+        }
+
+        .account-card header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .account-card-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin: 0;
+            color: var(--heading);
+        }
+
+        .account-card-tag {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background-color: rgba(37, 99, 235, 0.18);
+            color: rgba(191, 219, 254, 0.92);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .account-card.active .account-card-tag {
+            background-color: rgba(34, 197, 94, 0.22);
+            color: rgba(187, 247, 208, 0.95);
+        }
+
+        .account-meta {
+            font-size: 0.85rem;
+            color: var(--subtle);
+            line-height: 1.4;
+        }
+
+        .account-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .account-actions button {
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .account-actions button.primary {
+            background: var(--button-start-bg);
+            color: var(--btn-text);
+        }
+
+        .account-actions button.secondary {
+            border-color: var(--tab-border);
+        }
+
+        .account-actions button.danger {
+            border-color: rgba(248, 113, 113, 0.6);
+            color: rgba(248, 113, 113, 0.9);
+        }
+
+        .account-actions button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .account-form {
+            flex: 1 1 320px;
+            background: var(--tab-bg);
+            border: 1px solid var(--tab-border);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .account-form h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            color: var(--heading);
+        }
+
+        .account-form small {
+            color: var(--subtle);
+            line-height: 1.4;
+        }
+
+        .account-form .form-field {
+            gap: 6px;
+        }
+
+        .account-form-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .account-form button[type="submit"] {
+            background: var(--button-start-bg);
+            color: var(--btn-text);
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .account-form button[type="submit"]:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .account-form .cancel-btn {
+            background: transparent;
+            border: 1px solid var(--tab-border);
+            color: var(--text);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .account-empty {
+            border: 1px dashed var(--tab-border);
+            border-radius: 10px;
+            padding: 24px 18px;
+            text-align: center;
+            color: var(--subtle);
+            font-size: 0.95rem;
         }
 
         .group-section {
@@ -664,6 +859,47 @@
                                 <option value="">Loading models...</option>
                             </select>
                         </div>
+                    </div>
+                </div>
+                <div class="panel-card">
+                    <h2 class="panel-title">Telegram Accounts</h2>
+                    <p class="panel-subtext">Manage API credentials and sessions directly from the dashboard. Once a bot logs
+                        in successfully, its session string is saved automatically.</p>
+                    <div id="accountNotice" class="warning" style="display:none" role="status" aria-live="polite"></div>
+                    <div class="account-management">
+                        <div class="account-list" id="accountList" role="list">
+                            <div class="account-empty" id="accountEmptyState">
+                                No Telegram accounts configured yet. Add one to start the bot.
+                            </div>
+                        </div>
+                        <form id="accountForm" class="account-form" novalidate>
+                            <h3 id="accountFormTitle">Add account</h3>
+                            <small>Provide API credentials from <a href="https://my.telegram.org" target="_blank"
+                                    rel="noopener noreferrer">my.telegram.org</a>. Session strings are optional until the
+                                first login.</small>
+                            <input type="hidden" id="accountId">
+                            <div class="form-field">
+                                <label for="accountLabel">Display name</label>
+                                <input type="text" id="accountLabel" placeholder="e.g. Burner phone" required>
+                            </div>
+                            <div class="form-field">
+                                <label for="accountApiId">API ID</label>
+                                <input type="number" id="accountApiId" min="1" step="1" required>
+                            </div>
+                            <div class="form-field">
+                                <label for="accountApiHash">API Hash</label>
+                                <input type="text" id="accountApiHash" required>
+                            </div>
+                            <div class="form-field">
+                                <label for="accountSession">Session string</label>
+                                <textarea id="accountSession"
+                                    placeholder="Paste a Telegram session string (optional for first login)"></textarea>
+                            </div>
+                            <div class="account-form-actions">
+                                <button type="button" class="cancel-btn" id="accountCancelBtn" style="display:none">Cancel</button>
+                                <button type="submit" id="accountSaveBtn">Add account</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </section>

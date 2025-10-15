@@ -4,5 +4,5 @@ dist/
 .env
 *.session
 *.mp4
-
-
+data/config.json
+data/app.config.json
