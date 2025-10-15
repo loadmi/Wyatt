@@ -109,12 +109,34 @@ class BotController {
         this.loadingGroups = false;
         this.sendingGroupMessage = false;
         this.botIsRunning = false;
+        this.accountList = document.getElementById('accountList');
+        this.accountForm = document.getElementById('accountForm');
+        this.accountFormTitle = document.getElementById('accountFormTitle');
+        this.accountIdInput = document.getElementById('accountId');
+        this.accountLabelInput = document.getElementById('accountLabel');
+        this.accountApiIdInput = document.getElementById('accountApiId');
+        this.accountApiHashInput = document.getElementById('accountApiHash');
+        this.accountSessionInput = document.getElementById('accountSession');
+        this.accountSaveBtn = document.getElementById('accountSaveBtn');
+        this.accountCancelBtn = document.getElementById('accountCancelBtn');
+        this.accounts = [];
+        this.activeAccountId = null;
+        this.hasActiveAccount = false;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
         this.personaSelect.addEventListener('change', () => this.changePersona());
         this.providerSelect.addEventListener('change', () => this.changeProvider());
         this.openrouterModelSelect.addEventListener('change', () => this.changeOpenRouterModel());
+        if (this.accountForm) {
+            this.accountForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.submitAccountForm();
+            });
+        }
+        if (this.accountCancelBtn) {
+            this.accountCancelBtn.addEventListener('click', () => this.resetAccountForm());
+        }
         if (this.groupSelect) {
             this.groupSelect.addEventListener('change', () => this.updateGroupControlsState());
         }
@@ -133,6 +155,9 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        // Load Telegram accounts
+        this.loadAccounts();
 
         // Attempt to load group list (may warn if bot is stopped)
         this.loadGroups(false);
@@ -164,7 +189,7 @@ class BotController {
         } else {
             this.statusDiv.textContent = 'Status: Stopped';
             this.statusDiv.className = 'status stopped';
-            this.startBtn.disabled = false;
+            this.startBtn.disabled = !this.hasActiveAccount;
             this.stopBtn.disabled = true;
         }
         this.updateGroupControlsState();
@@ -316,6 +341,299 @@ class BotController {
             this.log('LLM config loaded');
         } catch (error) {
             this.log('❌ Error loading LLM config: ' + error.message);
+        }
+    }
+
+    async loadAccounts(logMessage = true) {
+        if (!this.accountList) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/config/accounts');
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.message || 'Failed to load accounts');
+            }
+
+            this.accounts = Array.isArray(data.accounts) ? data.accounts : [];
+            this.activeAccountId = typeof data.activeAccountId === 'string' ? data.activeAccountId : null;
+            this.renderAccounts();
+
+            if (logMessage) {
+                if (this.accounts.length > 0) {
+                    this.log(`Loaded ${this.accounts.length} Telegram account${this.accounts.length === 1 ? '' : 's'}.`);
+                } else {
+                    this.log('No Telegram accounts configured. Add one to start the bot.');
+                }
+            }
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Unable to load accounts';
+            this.log('❌ ' + message);
+        } finally {
+            this.updateStatus(this.botIsRunning);
+        }
+    }
+
+    renderAccounts() {
+        if (!this.accountList) {
+            return;
+        }
+
+        this.accountList.innerHTML = '';
+
+        if (!Array.isArray(this.accounts) || this.accounts.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'account-empty';
+            empty.textContent = 'No Telegram accounts configured yet. Add one to start the bot.';
+            this.accountList.appendChild(empty);
+            this.hasActiveAccount = false;
+            return;
+        }
+
+        const activeId = typeof this.activeAccountId === 'string' ? this.activeAccountId : null;
+        let activeDetected = false;
+
+        this.accounts.forEach(account => {
+            const isActive = account.isActive === true || (activeId && account.id === activeId);
+            if (isActive) {
+                activeDetected = true;
+            }
+
+            const card = document.createElement('div');
+            card.className = 'account-card';
+            card.setAttribute('role', 'listitem');
+            card.dataset.accountId = account.id;
+            if (isActive) {
+                card.classList.add('active');
+            }
+
+            const header = document.createElement('header');
+            const title = document.createElement('h3');
+            title.className = 'account-card-title';
+            title.textContent = account.label || 'Telegram account';
+            header.appendChild(title);
+
+            const tag = document.createElement('span');
+            tag.className = 'account-card-tag';
+            tag.textContent = isActive ? 'Active' : 'Available';
+            header.appendChild(tag);
+            card.appendChild(header);
+
+            const meta = document.createElement('div');
+            meta.className = 'account-meta';
+
+            const apiLine = document.createElement('div');
+            apiLine.textContent = `API ID: ${account.apiId}`;
+            meta.appendChild(apiLine);
+
+            const sessionLine = document.createElement('div');
+            const hasSession = typeof account.sessionString === 'string' && account.sessionString.trim().length > 0;
+            if (hasSession) {
+                const preview = document.createElement('code');
+                const sessionPreview = account.sessionString.slice(0, 12);
+                preview.textContent = sessionPreview + (account.sessionString.length > 12 ? '…' : '');
+                sessionLine.append('Session: Stored (', preview, ')');
+            } else {
+                sessionLine.textContent = 'Session: Missing';
+            }
+            meta.appendChild(sessionLine);
+
+            if (typeof account.updatedAt === 'number') {
+                const updatedLine = document.createElement('div');
+                updatedLine.textContent = 'Updated: ' + new Date(account.updatedAt).toLocaleString();
+                meta.appendChild(updatedLine);
+            }
+
+            card.appendChild(meta);
+
+            const actions = document.createElement('div');
+            actions.className = 'account-actions';
+
+            if (!isActive) {
+                const activateBtn = document.createElement('button');
+                activateBtn.type = 'button';
+                activateBtn.className = 'primary';
+                activateBtn.textContent = 'Set active';
+                activateBtn.addEventListener('click', () => this.activateAccount(account.id));
+                actions.appendChild(activateBtn);
+            }
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'secondary';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', () => this.editAccount(account));
+            actions.appendChild(editBtn);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'danger';
+            removeBtn.textContent = 'Remove';
+            removeBtn.addEventListener('click', () => this.deleteAccount(account));
+            actions.appendChild(removeBtn);
+
+            card.appendChild(actions);
+            this.accountList.appendChild(card);
+        });
+
+        this.hasActiveAccount = activeDetected;
+        if (!activeDetected && this.accounts.length > 0) {
+            this.log('⚠️ No active Telegram account selected. Choose one to enable the bot.');
+        }
+    }
+
+    editAccount(account) {
+        if (!account) return;
+
+        if (this.accountIdInput) this.accountIdInput.value = account.id || '';
+        if (this.accountLabelInput) this.accountLabelInput.value = account.label || '';
+        if (this.accountApiIdInput) this.accountApiIdInput.value = account.apiId != null ? account.apiId : '';
+        if (this.accountApiHashInput) this.accountApiHashInput.value = account.apiHash || '';
+        if (this.accountSessionInput) {
+            this.accountSessionInput.value = account.sessionString || '';
+            this.accountSessionInput.dataset.originalValue = account.sessionString || '';
+        }
+        if (this.accountFormTitle) {
+            this.accountFormTitle.textContent = `Edit ${account.label || 'account'}`;
+        }
+        if (this.accountSaveBtn) {
+            this.accountSaveBtn.textContent = 'Save changes';
+        }
+        if (this.accountCancelBtn) {
+            this.accountCancelBtn.style.display = '';
+        }
+        if (this.accountForm && typeof this.accountForm.scrollIntoView === 'function') {
+            this.accountForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    resetAccountForm() {
+        if (this.accountIdInput) this.accountIdInput.value = '';
+        if (this.accountLabelInput) this.accountLabelInput.value = '';
+        if (this.accountApiIdInput) this.accountApiIdInput.value = '';
+        if (this.accountApiHashInput) this.accountApiHashInput.value = '';
+        if (this.accountSessionInput) {
+            this.accountSessionInput.value = '';
+            if (this.accountSessionInput.dataset) {
+                delete this.accountSessionInput.dataset.originalValue;
+            }
+        }
+        if (this.accountFormTitle) {
+            this.accountFormTitle.textContent = 'Add account';
+        }
+        if (this.accountSaveBtn) {
+            this.accountSaveBtn.textContent = 'Add account';
+        }
+        if (this.accountCancelBtn) {
+            this.accountCancelBtn.style.display = 'none';
+        }
+    }
+
+    async submitAccountForm() {
+        if (!this.accountForm || !this.accountLabelInput || !this.accountApiIdInput || !this.accountApiHashInput) {
+            return;
+        }
+
+        const id = this.accountIdInput ? this.accountIdInput.value.trim() : '';
+        const label = this.accountLabelInput.value.trim();
+        const apiIdValue = Number(this.accountApiIdInput.value);
+        const apiHash = this.accountApiHashInput.value.trim();
+
+        if (!label || !apiHash || !Number.isFinite(apiIdValue) || apiIdValue <= 0) {
+            this.log('❌ Provide a display name, API ID, and API hash.');
+            return;
+        }
+
+        const payload = {
+            label,
+            apiId: apiIdValue,
+            apiHash,
+        };
+
+        if (this.accountSessionInput) {
+            const raw = this.accountSessionInput.value;
+            const trimmed = raw.trim();
+            const original = this.accountSessionInput.dataset ? this.accountSessionInput.dataset.originalValue || '' : '';
+            if (trimmed) {
+                payload.sessionString = trimmed;
+            } else if (id && original && raw === '') {
+                payload.sessionString = '';
+            }
+        }
+
+        if (this.accountSaveBtn) {
+            this.accountSaveBtn.disabled = true;
+        }
+
+        try {
+            const endpoint = id ? `/api/config/accounts/${encodeURIComponent(id)}` : '/api/config/accounts';
+            const method = id ? 'PUT' : 'POST';
+            const response = await fetch(endpoint, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to save account.');
+            }
+            this.log(`✅ ${id ? 'Account updated' : 'Account added'}: ${label}`);
+            this.resetAccountForm();
+            await this.loadAccounts(false);
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to save account.';
+            this.log('❌ ' + message);
+        } finally {
+            if (this.accountSaveBtn) {
+                this.accountSaveBtn.disabled = false;
+            }
+        }
+    }
+
+    async activateAccount(accountId) {
+        if (!accountId) return;
+        try {
+            const response = await fetch(`/api/config/accounts/${encodeURIComponent(accountId)}/activate`, {
+                method: 'POST',
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to activate account.');
+            }
+            const name = data?.account?.label || 'Account';
+            this.log(`✅ Activated account: ${name}`);
+            await this.loadAccounts(false);
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to activate account.';
+            this.log('❌ ' + message);
+        }
+    }
+
+    async deleteAccount(account) {
+        if (!account || !account.id) {
+            return;
+        }
+        const name = account.label || 'Account';
+        if (typeof window !== 'undefined' && !window.confirm(`Remove account "${name}"?`)) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/config/accounts/${encodeURIComponent(account.id)}`, {
+                method: 'DELETE',
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to remove account.');
+            }
+            this.log(`🗑️ Removed account: ${name}`);
+            if (this.accountIdInput && this.accountIdInput.value === account.id) {
+                this.resetAccountForm();
+            }
+            await this.loadAccounts(false);
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to remove account.';
+            this.log('❌ ' + message);
         }
     }
 

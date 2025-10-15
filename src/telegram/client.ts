@@ -9,14 +9,8 @@ import input from "input";
 import { messageHandler } from "./handlers";
 import { botStarted, botStopped } from "../metrics";
 import { generateSentimentMessage, SentimentSample } from "../llm/llm";
-
-// Validate environment variables
-if (!process.env.API_ID || !process.env.API_HASH) {
-  throw new Error("API_ID and API_HASH must be defined in .env file");
-}
-
-const apiId = parseInt(process.env.API_ID);
-const apiHash = process.env.API_HASH;
+import { getActiveTelegramAccount, updateTelegramAccount } from "../config";
+import type { TelegramAccount } from "../config";
 
 let client: TelegramClient;
 let isRunning = false;
@@ -41,10 +35,50 @@ interface ControlResponse {
   message: string;
 }
 
-async function setupClient(): Promise<void> {
-  const sessionString = process.env.SESSION_STRING || "";
-  const stringSession = new StringSession(sessionString);
-  client = new TelegramClient(stringSession, apiId, apiHash, {
+function requireActiveAccount(): TelegramAccount {
+  const account = getActiveTelegramAccount();
+  if (!account) {
+    throw new Error("No active Telegram account configured. Add one under Configuration → Telegram Accounts.");
+  }
+
+  if (!Number.isFinite(account.apiId)) {
+    throw new Error(`Active account "${account.label}" is missing a valid API ID.`);
+  }
+
+  const apiHash = account.apiHash?.trim();
+  if (!apiHash) {
+    throw new Error(`Active account "${account.label}" is missing an API hash.`);
+  }
+
+  const sessionString = (account.sessionString ?? "").trim();
+
+  return {
+    ...account,
+    apiId: Math.trunc(account.apiId),
+    apiHash,
+    sessionString,
+  };
+}
+
+async function persistSession(account: TelegramAccount, session: string): Promise<void> {
+  const trimmed = session.trim();
+  if (!trimmed || trimmed === account.sessionString) {
+    return;
+  }
+  try {
+    updateTelegramAccount(account.id, { sessionString: trimmed });
+    console.log(`Stored new session for account "${account.label}".`);
+  } catch (error) {
+    console.warn(
+      `Failed to persist session for account "${account.label}":`,
+      (error as any)?.message || error,
+    );
+  }
+}
+
+async function setupClient(account: TelegramAccount): Promise<void> {
+  const stringSession = new StringSession(account.sessionString || "");
+  client = new TelegramClient(stringSession, account.apiId, account.apiHash, {
     connectionRetries: 10,       // more chances to reconnect
     requestRetries: 5,           // retry failed API calls
     retryDelay: 1000,            // 1s backoff
@@ -59,18 +93,18 @@ async function setupClient(): Promise<void> {
     }
   };
 
-  console.log("Connecting to Telegram...");
-  
+  console.log(`Connecting to Telegram as "${account.label}"...`);
+
   // Check if we have a valid session string
-  if (process.env.SESSION_STRING && process.env.SESSION_STRING.trim() !== '') {
-    console.log("Using existing session string...");
+  if (account.sessionString && account.sessionString.trim() !== "") {
+    console.log("Using stored session string...");
     try {
       await client.connect();
       await client.getDialogs({ limit: 100 });
       console.log("✅ Connected using existing session!");
       return;
     } catch (error) {
-      console.log("❌ Failed to connect with existing session, will need to re-authenticate...");
+      console.log("❌ Stored session was rejected, starting interactive login...");
     }
   }
 
@@ -109,14 +143,11 @@ async function setupClient(): Promise<void> {
   console.log("✅ Telegram client connected successfully!");
 
   const session = client.session.save();
-  if (process.env.SESSION_STRING !== session) {
-    console.log("\n" + "=".repeat(60));
-    console.log("🔑 IMPORTANT: Copy this session string to your .env file:");
-    console.log("=".repeat(60));
-    console.log(session);
-    console.log("=".repeat(60));
-    console.log("Update your .env file with this session string to avoid re-login next time.");
-    console.log("=".repeat(60) + "\n");
+  if (typeof session === 'string') {
+    await persistSession(account, session);
+    console.log("🔐 Session saved to dashboard configuration.");
+  } else {
+    console.warn("Received unexpected session data; skipping persistence.");
   }
 }
 
@@ -127,8 +158,9 @@ export async function startBot(): Promise<ControlResponse> {
   }
 
   try {
-    console.log("Starting Telegram bot...");
-    
+    const account = requireActiveAccount();
+    console.log(`Starting Telegram bot for account "${account.label}"...`);
+
     // Always create a new client to ensure clean state
     if (client) {
       try {
@@ -137,13 +169,13 @@ export async function startBot(): Promise<ControlResponse> {
         // Ignore teardown errors
       }
     }
-    
+
     // Set up client with longer timeout (2 minutes for login process)
-    const setupPromise = setupClient();
+    const setupPromise = setupClient(account);
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error("Setup timeout after 2 minutes - please check your terminal for login prompts")), 120000);
     });
-    
+
     await Promise.race([setupPromise, timeoutPromise]);
     
     messageEvent = new NewMessage({});
@@ -365,10 +397,13 @@ async function teardownClient(): Promise<void> {
 }
 
 // Helper: minimal setup that only uses an existing session and never prompts.
-async function setupClientNonInteractive(): Promise<void> {
-  const sessionString = process.env.SESSION_STRING || "";
+async function setupClientNonInteractive(account: TelegramAccount): Promise<void> {
+  const sessionString = (account.sessionString || "").trim();
+  if (!sessionString) {
+    throw new Error("No session configured for the active account");
+  }
   const stringSession = new StringSession(sessionString);
-  client = new TelegramClient(stringSession, apiId, apiHash, {
+  client = new TelegramClient(stringSession, account.apiId, account.apiHash, {
     connectionRetries: 10,
     requestRetries: 5,
     retryDelay: 1000,
@@ -381,18 +416,14 @@ async function setupClientNonInteractive(): Promise<void> {
     if (isStopping) return;
   };
 
-  if (process.env.SESSION_STRING && process.env.SESSION_STRING.trim() !== "") {
-    try {
-      await client.connect();
-      await client.getDialogs({ limit: 1 });
-      return;
-    } catch (e) {
-      throw new Error(
-        "Existing session is invalid or expired; interactive login required"
-      );
-    }
+  try {
+    await client.connect();
+    await client.getDialogs({ limit: 1 });
+  } catch (e) {
+    throw new Error(
+      "Existing session is invalid or expired; interactive login required",
+    );
   }
-  throw new Error("No session configured; interactive login required");
 }
 
 // Non-interactive start for auto-start on server boot.
@@ -402,13 +433,20 @@ export async function startBotNonInteractive(): Promise<ControlResponse> {
     return { success: true, message: "Bot is already running." };
   }
   try {
+    const account = requireActiveAccount();
+    if (!account.sessionString) {
+      return {
+        success: false,
+        message: `Active account "${account.label}" does not have a stored session string.`,
+      };
+    }
     if (client) {
       try {
         await client.destroy();
       } catch {}
     }
 
-    await setupClientNonInteractive();
+    await setupClientNonInteractive(account);
     messageEvent = new NewMessage({});
     client.addEventHandler(messageHandler, messageEvent);
     isRunning = true;

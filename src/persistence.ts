@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { TelegramAccount } from './config';
 
 export type PersistedState = {
   currentPersona?: string;
@@ -7,6 +8,8 @@ export type PersistedState = {
   openrouterModel?: string;
   // Store resolved system prompt text to avoid dynamic imports at boot
   systemPrompt?: string;
+  telegramAccounts?: TelegramAccount[];
+  activeAccountId?: string | null;
 };
 
 function stateFilePath(): string {

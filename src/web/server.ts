@@ -11,7 +11,16 @@ import {
 } from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
-import { appConfig, setConfig } from "../config";
+import {
+  appConfig,
+  setConfig,
+  getActiveTelegramAccount,
+  getTelegramAccounts,
+  addTelegramAccount,
+  updateTelegramAccount,
+  removeTelegramAccount,
+  setActiveTelegramAccount,
+} from "../config";
 import { loadPersistedState } from "../persistence";
 import { availableJsonFiles } from "../llm/personas/personalities";
 
@@ -25,31 +34,99 @@ export function startWebServer(): void {
   // Add JSON body parser middleware
   app.use(express.json());
 
+  function migrateAccountFromEnv(): boolean {
+    const apiIdRaw = process.env.API_ID;
+    const apiHashRaw = process.env.API_HASH;
+    if (!apiIdRaw || !apiHashRaw) {
+      return false;
+    }
+
+    const apiId = Number(apiIdRaw);
+    if (!Number.isFinite(apiId)) {
+      console.warn("Skipping Telegram credential migration: API_ID must be numeric.");
+      return false;
+    }
+
+    try {
+      const label = (process.env.TELEGRAM_ACCOUNT_LABEL || "Migrated Account").trim() || "Migrated Account";
+      const sessionString = (process.env.SESSION_STRING || "").trim();
+      const account = addTelegramAccount({
+        label,
+        apiId: Math.trunc(apiId),
+        apiHash: apiHashRaw.trim(),
+        sessionString,
+      });
+      setActiveTelegramAccount(account.id);
+      console.log("Migrated Telegram credentials from environment variables into dashboard configuration.");
+      return true;
+    } catch (error) {
+      console.warn(
+        "Failed to migrate Telegram account from environment variables:",
+        (error as any)?.message || error,
+      );
+      return false;
+    }
+  }
+
+  type AccountView = ReturnType<typeof getTelegramAccounts>[number];
+  const decorateAccount = (account: AccountView) => ({
+    ...account,
+    isActive: appConfig().activeAccountId === account.id,
+  });
+
   async function applyPersistedConfig() {
     try {
       const persisted = loadPersistedState();
       const allowedProviders = ["pollinations", "openrouter"] as const;
-      const next = { ...appConfig() } as any;
+      const updates: Record<string, unknown> = {};
+
       // Prefer directly persisted systemPrompt to avoid runtime JSON import issues
-      if (typeof persisted.systemPrompt === 'string' && persisted.systemPrompt.trim().length > 0) {
-        next.systemPrompt = persisted.systemPrompt;
-        if (persisted.currentPersona) next.currentPersona = persisted.currentPersona;
+      if (typeof persisted.systemPrompt === "string" && persisted.systemPrompt.trim().length > 0) {
+        updates.systemPrompt = persisted.systemPrompt;
+        if (persisted.currentPersona) updates.currentPersona = persisted.currentPersona;
       } else if (persisted.currentPersona && availableJsonFiles.includes(persisted.currentPersona)) {
         try {
-          const importedPersona = await import(`../llm/personas/${persisted.currentPersona}`, { with: { type: "json" } }).then(mod => mod.default);
-          next.systemPrompt = JSON.stringify(importedPersona);
-          next.currentPersona = persisted.currentPersona;
+          const importedPersona = await import(`../llm/personas/${persisted.currentPersona}`, { with: { type: "json" } }).then(
+            (mod) => mod.default,
+          );
+          updates.systemPrompt = JSON.stringify(importedPersona);
+          updates.currentPersona = persisted.currentPersona;
         } catch (e) {
-          console.warn('Failed to load persisted persona, falling back:', (e as any)?.message || e);
+          console.warn("Failed to load persisted persona, falling back:", (e as any)?.message || e);
         }
       }
+
       if (persisted.llmProvider && allowedProviders.includes(persisted.llmProvider)) {
-        next.llmProvider = persisted.llmProvider;
-        if (persisted.llmProvider === 'openrouter' && typeof persisted.openrouterModel === 'string' && persisted.openrouterModel.trim()) {
-          next.openrouterModel = persisted.openrouterModel.trim();
+        updates.llmProvider = persisted.llmProvider;
+        if (
+          persisted.llmProvider === "openrouter" &&
+          typeof persisted.openrouterModel === "string" &&
+          persisted.openrouterModel.trim()
+        ) {
+          updates.openrouterModel = persisted.openrouterModel.trim();
         }
       }
-      setConfig(next);
+
+      if (Array.isArray(persisted.telegramAccounts)) {
+        updates.telegramAccounts = persisted.telegramAccounts;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(persisted, "activeAccountId")) {
+        updates.activeAccountId = persisted.activeAccountId ?? null;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        setConfig(updates as Partial<ReturnType<typeof appConfig>>);
+      }
+
+      if (getTelegramAccounts().length === 0) {
+        const migrated = migrateAccountFromEnv();
+        if (!migrated && (process.env.API_ID || process.env.API_HASH || process.env.SESSION_STRING)) {
+          console.warn(
+            "Telegram credentials were detected in environment variables, but no account is configured. Add an account via the dashboard.",
+          );
+        }
+      }
     } catch (e) {
       console.warn('Failed to apply persisted state at startup:', (e as any)?.message || e);
     }
@@ -101,7 +178,6 @@ export function startWebServer(): void {
 
   app.post("/api/config/persona", async (req: Request, res: Response) => {
     const { persona } = req.body;
-    const newConfig = appConfig();
     const availablePersonalities = availableJsonFiles;
 
 
@@ -109,10 +185,113 @@ export function startWebServer(): void {
       return res.status(400).json({ success: false, message: "Invalid persona." });
     }
     const importedPersona = await import(`../llm/personas/${persona}`, { with: { type: "json" } }).then(mod => mod.default);
-    (newConfig as any).systemPrompt = JSON.stringify(importedPersona);
-    (newConfig as any).currentPersona = persona;
-    setConfig(newConfig as any);
+    setConfig({
+      systemPrompt: JSON.stringify(importedPersona),
+      currentPersona: persona,
+    } as Partial<ReturnType<typeof appConfig>>);
     res.status(201).json({ success: true, persona });
+  });
+
+  app.get("/api/config/accounts", (req: Request, res: Response) => {
+    const accounts = getTelegramAccounts();
+    const activeAccountId = appConfig().activeAccountId ?? null;
+    res.json({
+      accounts: accounts.map((account) => decorateAccount(account)),
+      activeAccountId,
+    });
+  });
+
+  app.post("/api/config/accounts", (req: Request, res: Response) => {
+    const { label, apiId, apiHash, sessionString } = req.body || {};
+    try {
+      const account = addTelegramAccount({
+        label: typeof label === "string" ? label : String(label ?? ""),
+        apiId: typeof apiId === "number" ? apiId : Number(apiId),
+        apiHash: typeof apiHash === "string" ? apiHash : apiHash != null ? String(apiHash) : "",
+        sessionString:
+          typeof sessionString === "string"
+            ? sessionString
+            : sessionString != null
+              ? String(sessionString)
+              : undefined,
+      });
+      res.status(201).json({
+        success: true,
+        account: decorateAccount(account),
+        activeAccountId: appConfig().activeAccountId ?? null,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to add account.";
+      res.status(400).json({ success: false, message });
+    }
+  });
+
+  app.put("/api/config/accounts/:id", (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { label, apiId, apiHash, sessionString } = req.body || {};
+    const patch: Record<string, unknown> = {};
+    if (label !== undefined) {
+      patch.label = typeof label === "string" ? label : String(label ?? "");
+    }
+    if (apiId !== undefined) {
+      patch.apiId = typeof apiId === "number" ? apiId : Number(apiId);
+    }
+    if (apiHash !== undefined) {
+      patch.apiHash = typeof apiHash === "string" ? apiHash : apiHash != null ? String(apiHash) : "";
+    }
+    if (sessionString !== undefined) {
+      patch.sessionString =
+        typeof sessionString === "string"
+          ? sessionString
+          : sessionString != null
+            ? String(sessionString)
+            : "";
+    }
+
+    try {
+      const account = updateTelegramAccount(id, patch);
+      res.json({
+        success: true,
+        account: decorateAccount(account),
+        activeAccountId: appConfig().activeAccountId ?? null,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update account.";
+      const status = message.toLowerCase().includes("not found") ? 404 : 400;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.delete("/api/config/accounts/:id", (req: Request, res: Response) => {
+    const { id } = req.params;
+    try {
+      removeTelegramAccount(id);
+      res.json({
+        success: true,
+        accounts: getTelegramAccounts().map((account) => decorateAccount(account)),
+        activeAccountId: appConfig().activeAccountId ?? null,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to remove account.";
+      const status = message.toLowerCase().includes("not found") ? 404 : 400;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/config/accounts/:id/activate", (req: Request, res: Response) => {
+    const { id } = req.params;
+    try {
+      const account = setActiveTelegramAccount(id);
+      res.json({
+        success: true,
+        account: decorateAccount(account),
+        activeAccountId: appConfig().activeAccountId ?? null,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to activate account.";
+      const status = message.toLowerCase().includes("not found") ? 404 : 400;
+      res.status(status).json({ success: false, message });
+    }
   });
 
   app.get("/api/config/personas", async (req: Request, res: Response) => {
@@ -145,16 +324,15 @@ export function startWebServer(): void {
     if (!allowedProviders.includes(provider)) {
       return res.status(400).json({ success: false, message: "Invalid provider" });
     }
-    const current = appConfig() as any;
-    const next = { ...current };
-    next.llmProvider = provider;
+    const updates: Partial<ReturnType<typeof appConfig>> = { llmProvider: provider };
     if (provider === 'openrouter') {
       if (typeof openrouterModel === 'string' && openrouterModel.trim().length > 0) {
-        next.openrouterModel = openrouterModel.trim();
+        updates.openrouterModel = openrouterModel.trim();
       }
     }
-    setConfig(next);
-    res.status(201).json({ success: true, provider: next.llmProvider, openrouterModel: next.openrouterModel });
+    setConfig(updates);
+    const cfg = appConfig() as any;
+    res.status(201).json({ success: true, provider: cfg.llmProvider, openrouterModel: cfg.openrouterModel });
   });
 
   app.listen(PORT, async () => {
@@ -164,8 +342,10 @@ export function startWebServer(): void {
     await applyPersistedConfig();
 
     // Attempt to auto-start the bot if a valid session is present.
-    const hasSession = !!(process.env.SESSION_STRING && process.env.SESSION_STRING.trim());
-    if (hasSession) {
+    const activeAccount = getActiveTelegramAccount();
+    if (!activeAccount) {
+      console.log("Auto-start skipped: no active Telegram account configured.");
+    } else if (activeAccount.sessionString && activeAccount.sessionString.trim()) {
       try {
         const result = await startBotNonInteractive();
         if (result.success) {
@@ -177,7 +357,9 @@ export function startWebServer(): void {
         console.log("Auto-start failed:", err?.message || String(err));
       }
     } else {
-      console.log("Auto-start skipped: no SESSION_STRING configured.");
+      console.log(
+        `Auto-start skipped: active account "${activeAccount.label}" does not have a stored session string. Start the bot once manually to capture it.`,
+      );
     }
   });
 }
