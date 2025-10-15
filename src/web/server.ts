@@ -9,6 +9,7 @@ import {
   listTelegramGroups,
   sendSentimentToGroup,
 } from "../telegram/client";
+import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import {
@@ -73,6 +74,20 @@ export function startWebServer(): void {
     ...account,
     isActive: appConfig().activeAccountId === account.id,
   });
+
+  // Redact sensitive fields (apiHash, sessionString) from responses
+  const sanitizeAccount = (account: AccountView) => {
+    const { id, label, apiId, createdAt, updatedAt } = account;
+    return {
+      id,
+      label,
+      apiId,
+      createdAt,
+      updatedAt,
+      isActive: appConfig().activeAccountId === id,
+      hasSession: typeof account.sessionString === "string" && account.sessionString.trim().length > 0,
+    };
+  };
 
   async function applyPersistedConfig() {
     try {
@@ -196,7 +211,7 @@ export function startWebServer(): void {
     const accounts = getTelegramAccounts();
     const activeAccountId = appConfig().activeAccountId ?? null;
     res.json({
-      accounts: accounts.map((account) => decorateAccount(account)),
+      accounts: accounts.map((account) => sanitizeAccount(account as any)),
       activeAccountId,
     });
   });
@@ -217,7 +232,7 @@ export function startWebServer(): void {
       });
       res.status(201).json({
         success: true,
-        account: decorateAccount(account),
+        account: sanitizeAccount(account as any),
         activeAccountId: appConfig().activeAccountId ?? null,
       });
     } catch (error) {
@@ -252,7 +267,7 @@ export function startWebServer(): void {
       const account = updateTelegramAccount(id, patch);
       res.json({
         success: true,
-        account: decorateAccount(account),
+        account: sanitizeAccount(account as any),
         activeAccountId: appConfig().activeAccountId ?? null,
       });
     } catch (error) {
@@ -268,7 +283,7 @@ export function startWebServer(): void {
       removeTelegramAccount(id);
       res.json({
         success: true,
-        accounts: getTelegramAccounts().map((account) => decorateAccount(account)),
+        accounts: getTelegramAccounts().map((account) => sanitizeAccount(account as any)),
         activeAccountId: appConfig().activeAccountId ?? null,
       });
     } catch (error) {
@@ -278,19 +293,65 @@ export function startWebServer(): void {
     }
   });
 
-  app.post("/api/config/accounts/:id/activate", (req: Request, res: Response) => {
+  app.post("/api/config/accounts/:id/activate", async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
+      // Enforce: only accounts with a session string can be set active
+      const existing = getTelegramAccounts().find((a) => a.id === id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Account not found." });
+      }
+      const hasSession = typeof existing.sessionString === "string" && existing.sessionString.trim().length > 0;
+      if (!hasSession) {
+        return res.status(400).json({ success: false, message: "Cannot activate account without a session. Start console login first." });
+      }
+
       const account = setActiveTelegramAccount(id);
+
+      // If bot is running, restart it with the newly active account (non-interactive)
+      let restarted = false;
+      let restartMessage = "";
+      try {
+        if (getStatus().isRunning) {
+          const stop = await stopBot();
+          if (!stop.success) {
+            restartMessage = stop.message || "Failed to stop bot.";
+          }
+          const start = await startBotNonInteractive();
+          restarted = start.success === true;
+          restartMessage = start.message || restartMessage;
+        }
+      } catch (e: any) {
+        restartMessage = e?.message || String(e);
+      }
+
       res.json({
         success: true,
-        account: decorateAccount(account),
+        account: sanitizeAccount(account as any),
         activeAccountId: appConfig().activeAccountId ?? null,
+        restarted,
+        restartMessage,
       });
     } catch (error) {
       const message = (error as any)?.message || "Failed to activate account.";
       const status = message.toLowerCase().includes("not found") ? 404 : 400;
       res.status(status).json({ success: false, message });
+    }
+  });
+
+  // Initiate interactive console login for a specific account (non-blocking)
+  app.post("/api/config/accounts/:id/login", async (req: Request, res: Response) => {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Account ID is required." });
+    }
+    try {
+      const result = await initiateAccountConsoleLogin(id);
+      const status = result.success ? 202 : 400;
+      res.status(status).json(result);
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to initiate console login.";
+      res.status(500).json({ success: false, message });
     }
   });
 

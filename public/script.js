@@ -112,6 +112,7 @@ class BotController {
         this.accountList = document.getElementById('accountList');
         this.accountForm = document.getElementById('accountForm');
         this.accountFormTitle = document.getElementById('accountFormTitle');
+        this.accountNotice = document.getElementById('accountNotice');
         this.accountIdInput = document.getElementById('accountId');
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
@@ -122,6 +123,9 @@ class BotController {
         this.accounts = [];
         this.activeAccountId = null;
         this.hasActiveAccount = false;
+        this._accountNoticeTimer = null;
+        this._loginPollInterval = null;
+        this._loginPollBusy = false;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
@@ -428,12 +432,9 @@ class BotController {
             meta.appendChild(apiLine);
 
             const sessionLine = document.createElement('div');
-            const hasSession = typeof account.sessionString === 'string' && account.sessionString.trim().length > 0;
+            const hasSession = (account && account.hasSession === true) || (typeof account.sessionString === 'string' && account.sessionString.trim().length > 0);
             if (hasSession) {
-                const preview = document.createElement('code');
-                const sessionPreview = account.sessionString.slice(0, 12);
-                preview.textContent = sessionPreview + (account.sessionString.length > 12 ? '…' : '');
-                sessionLine.append('Session: Stored (', preview, ')');
+                sessionLine.textContent = 'Session: Stored';
             } else {
                 sessionLine.textContent = 'Session: Missing';
             }
@@ -451,12 +452,26 @@ class BotController {
             actions.className = 'account-actions';
 
             if (!isActive) {
-                const activateBtn = document.createElement('button');
-                activateBtn.type = 'button';
-                activateBtn.className = 'primary';
-                activateBtn.textContent = 'Set active';
-                activateBtn.addEventListener('click', () => this.activateAccount(account.id));
-                actions.appendChild(activateBtn);
+                const hasSessionForActivation = (account && account.hasSession === true) || (typeof account.sessionString === 'string' && account.sessionString.trim().length > 0);
+                if (hasSessionForActivation) {
+                    const activateBtn = document.createElement('button');
+                    activateBtn.type = 'button';
+                    activateBtn.className = 'primary';
+                    activateBtn.textContent = 'Set active';
+                    activateBtn.addEventListener('click', () => this.activateAccount(account.id));
+                    actions.appendChild(activateBtn);
+                }
+            }
+
+            // Show console-login button for accounts missing a session
+            const needsSession = !((account && account.hasSession === true) || (typeof account.sessionString === 'string' && account.sessionString.trim().length > 0));
+            if (needsSession) {
+                const loginBtn = document.createElement('button');
+                loginBtn.type = 'button';
+                loginBtn.className = 'secondary console-login-btn';
+                loginBtn.textContent = 'Console login';
+                loginBtn.addEventListener('click', () => this.startConsoleLogin(account.id, account.label || 'account', loginBtn));
+                actions.appendChild(loginBtn);
             }
 
             const editBtn = document.createElement('button');
@@ -483,16 +498,86 @@ class BotController {
         }
     }
 
+    pollForSession(accountId, label, timeoutMs = 90000) {
+        if (this._loginPollInterval) {
+            clearInterval(this._loginPollInterval);
+            this._loginPollInterval = null;
+        }
+        const stopAt = Date.now() + timeoutMs;
+        this._loginPollInterval = setInterval(async () => {
+            if (this._loginPollBusy) return;
+            this._loginPollBusy = true;
+            try {
+                await this.loadAccounts(false);
+                const acct = Array.isArray(this.accounts) ? this.accounts.find(a => a.id === accountId) : null;
+                const hasSession = !!(acct && (acct.hasSession === true || (typeof acct.sessionString === 'string' && acct.sessionString.trim().length > 0)));
+                if (hasSession) {
+                    this.log(`�o. Session detected for ${label}. You can set it active now.`);
+                    this.showAccountNotice(`Session saved for "${label}". You can set it active.`, 8000);
+                    clearInterval(this._loginPollInterval);
+                    this._loginPollInterval = null;
+                }
+            } catch (e) {
+                // ignore transient errors
+            } finally {
+                this._loginPollBusy = false;
+            }
+            if (Date.now() > stopAt) {
+                if (this._loginPollInterval) {
+                    clearInterval(this._loginPollInterval);
+                    this._loginPollInterval = null;
+                }
+            }
+        }, 3000);
+    }
+
+    showAccountNotice(message, durationMs = 15000) {
+        if (!this.accountNotice) return;
+        this.accountNotice.textContent = message;
+        this.accountNotice.style.display = '';
+        if (this._accountNoticeTimer) {
+            clearTimeout(this._accountNoticeTimer);
+        }
+        this._accountNoticeTimer = setTimeout(() => {
+            if (this.accountNotice) this.accountNotice.style.display = 'none';
+            this._accountNoticeTimer = null;
+        }, durationMs);
+    }
+
+    async startConsoleLogin(accountId, label, buttonEl) {
+        if (!accountId) return;
+        this.showAccountNotice(`Starting interactive login for "${label}". Continue in the server console. This notice will close in 15s.`);
+        this.log(`Initiating console login for ${label}...`);
+        if (buttonEl) {
+            try { buttonEl.disabled = true; } catch {}
+            setTimeout(() => { try { buttonEl.disabled = false; } catch {} }, 15000);
+        }
+        try {
+            const response = await fetch(`/api/config/accounts/${encodeURIComponent(accountId)}/login`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to start console login.');
+            }
+            this.log('�o. ' + data.message);
+            this.pollForSession(accountId, label, 120000);
+        } catch (error) {
+            this.log('�?O ' + (error && error.message ? error.message : 'Error starting console login'));
+        }
+    }
+
     editAccount(account) {
         if (!account) return;
 
         if (this.accountIdInput) this.accountIdInput.value = account.id || '';
         if (this.accountLabelInput) this.accountLabelInput.value = account.label || '';
         if (this.accountApiIdInput) this.accountApiIdInput.value = account.apiId != null ? account.apiId : '';
-        if (this.accountApiHashInput) this.accountApiHashInput.value = account.apiHash || '';
+        if (this.accountApiHashInput) this.accountApiHashInput.value = '';
         if (this.accountSessionInput) {
-            this.accountSessionInput.value = account.sessionString || '';
-            this.accountSessionInput.dataset.originalValue = account.sessionString || '';
+            // Do not expose stored session in UI
+            this.accountSessionInput.value = '';
+            if (this.accountSessionInput.dataset) {
+                delete this.accountSessionInput.dataset.originalValue;
+            }
         }
         if (this.accountFormTitle) {
             this.accountFormTitle.textContent = `Edit ${account.label || 'account'}`;
@@ -539,17 +624,13 @@ class BotController {
         const label = this.accountLabelInput.value.trim();
         const apiIdValue = Number(this.accountApiIdInput.value);
         const apiHash = this.accountApiHashInput.value.trim();
-
-        if (!label || !apiHash || !Number.isFinite(apiIdValue) || apiIdValue <= 0) {
-            this.log('❌ Provide a display name, API ID, and API hash.');
+        const isEdit = !!id;
+        if (!label || !Number.isFinite(apiIdValue) || apiIdValue <= 0 || (!isEdit && !apiHash)) {
+            this.log('\uFFFD?O Provide a display name and API ID. API hash is required when adding a new account.');
             return;
         }
 
-        const payload = {
-            label,
-            apiId: apiIdValue,
-            apiHash,
-        };
+        const payload = { label, apiId: apiIdValue, }; if (!isEdit || apiHash) { payload.apiHash = apiHash; }
 
         if (this.accountSessionInput) {
             const raw = this.accountSessionInput.value;
@@ -581,6 +662,14 @@ class BotController {
             this.log(`✅ ${id ? 'Account updated' : 'Account added'}: ${label}`);
             this.resetAccountForm();
             await this.loadAccounts(false);
+            if (data && Object.prototype.hasOwnProperty.call(data, 'restarted')) {
+                if (data.restarted) {
+                    this.log('Bot restarted on activation' + (data.restartMessage ? `: ${data.restartMessage}` : ''));
+                } else if (data.restartMessage) {
+                    this.log('Info: ' + data.restartMessage);
+                }
+            }
+            this.checkStatus();
         } catch (error) {
             const message = error && error.message ? error.message : 'Failed to save account.';
             this.log('❌ ' + message);

@@ -9,7 +9,7 @@ import input from "input";
 import { messageHandler } from "./handlers";
 import { botStarted, botStopped } from "../metrics";
 import { generateSentimentMessage, SentimentSample } from "../llm/llm";
-import { getActiveTelegramAccount, updateTelegramAccount } from "../config";
+import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
 
 let client: TelegramClient;
@@ -149,6 +149,93 @@ async function setupClient(account: TelegramAccount): Promise<void> {
   } else {
     console.warn("Received unexpected session data; skipping persistence.");
   }
+}
+
+// Track in-progress logins to avoid duplicate prompts per account
+const loginInProgress = new Set<string>();
+
+function findAccountById(id: string): TelegramAccount | undefined {
+  const all = getTelegramAccounts();
+  return all.find((a) => a.id === id);
+}
+
+// Background interactive login for a specific account using a dedicated client instance.
+// Does not change the running bot state; persists session on success.
+async function loginOnly(account: TelegramAccount): Promise<void> {
+  // Force a clean interactive login regardless of any stored session
+  const stringSession = new StringSession("");
+  const temp = new TelegramClient(stringSession, account.apiId, account.apiHash, {
+    connectionRetries: 10,
+    requestRetries: 5,
+    retryDelay: 1000,
+    timeout: 20000,
+    useWSS: true,
+  });
+
+  console.log(`Starting interactive login in console for account "${account.label}"...`);
+  console.log("Follow the prompts below to complete Telegram login.");
+
+  try {
+    await temp.start({
+      phoneNumber: async () => {
+        console.log("\nPlease enter your phone number (with country code, e.g., +1234567890):");
+        const phone = await input.text("Phone number: ");
+        return phone;
+      },
+      password: async () => {
+        console.log("\nPlease enter your 2FA password (if you have one, press Enter to skip):");
+        const password = await input.text("Password: ");
+        return password;
+      },
+      phoneCode: async () => {
+        console.log("\nPlease enter the verification code sent to your phone:");
+        const code = await input.text("Verification code: ");
+        return code;
+      },
+      onError: (err) => {
+        console.error("Telegram connection error during login:", err);
+        throw err;
+      },
+    });
+
+    const session = temp.session.save();
+    if (typeof session === "string") {
+      await persistSession(account, session);
+    }
+  } finally {
+    try { await temp.disconnect(); } catch {}
+    try { await temp.destroy(); } catch {}
+  }
+}
+
+export async function initiateAccountConsoleLogin(accountId: string): Promise<ControlResponse> {
+  const id = (accountId || "").trim();
+  if (!id) return { success: false, message: "Account ID is required." };
+
+  const account = findAccountById(id);
+  if (!account) return { success: false, message: "Account not found." };
+
+  if (!Number.isFinite(account.apiId) || !account.apiHash?.trim()) {
+    return { success: false, message: "Account is missing API credentials." };
+  }
+
+  if (loginInProgress.has(id)) {
+    return { success: false, message: "Login already in progress for this account." };
+  }
+
+  loginInProgress.add(id);
+  (async () => {
+    try {
+      await loginOnly({ ...account, apiId: Math.trunc(account.apiId), apiHash: account.apiHash.trim(), sessionString: (account.sessionString || "").trim() });
+      console.log(`Interactive login finished for account "${account.label}".`);
+    } catch (e) {
+      console.error(`Interactive login failed for account "${account.label}":`, (e as any)?.message || e);
+    } finally {
+      loginInProgress.delete(id);
+    }
+  })();
+
+  return { success: true, message: `Interactive login started for "${account.label}". Check the server console.` };
 }
 
 export async function startBot(): Promise<ControlResponse> {
