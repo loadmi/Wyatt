@@ -184,8 +184,16 @@ export type SentimentSample = {
   timestamp?: number;
 };
 
-export async function generateSentimentMessage(samples: SentimentSample[]): Promise<string> {
-  const fallback = 'Hey everyone—just checking in and keeping the energy going!';
+export async function generateSentimentMessage(
+  samples: SentimentSample[],
+  options?: { context?: 'group' | 'private' }
+): Promise<string> {
+  const context = options?.context === 'private' ? 'private' : 'group';
+  const fallback =
+    context === 'private'
+      ? 'Sounds good—talk soon!'
+      : 'Hey everyone—just checking in and keeping the energy going!';
+
   if (!samples || samples.length === 0) {
     return fallback;
   }
@@ -198,23 +206,41 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
   });
 
   const transcript = normalized.join('\n');
-  const systemPrompt = [
-    'You write low-key Telegram messages that blend into a group chat.',
-    'Read the transcript of recent messages and match the group’s vibe and language.',
-    'Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.',
-    'If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.',
-    'One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.',
-    'Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.',
-    'Output only the final message.',
-  ].join(' ');
 
-  const userPrompt = [
-    'Recent group conversation (oldest first):',
-    transcript,
-    '',
-    'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
-  ].join('\n');
-console.log(userPrompt)
+  const systemPrompt =
+    context === 'private'
+      ? [
+        'You craft low-key Telegram DM replies that feel like a natural continuation of the chat.',
+        'Study the transcript of recent one-on-one messages and mirror the tone, energy, and level of detail.',
+        'Offer a concise acknowledgment or follow-up that fits what was said without introducing new plans or questions unless the chat clearly expects it.',
+        'Keep it friendly and casual, max ~220 characters, no hashtags, links, or meta commentary.',
+        'Avoid sounding like an AI or referencing that you analysed messages. Output only the reply.',
+      ].join(' ')
+      : [
+        'You write low-key Telegram messages that blend into a group chat.',
+        'Read the transcript of recent messages and match the group’s vibe and language.',
+        'Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.',
+        'If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.',
+        'One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.',
+        'Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.',
+        'Output only the final message.',
+      ].join(' ');
+
+  const userPrompt =
+    context === 'private'
+      ? [
+        'Recent direct conversation (oldest first):',
+        transcript,
+        '',
+        'Write one casual reply that keeps things moving naturally. Reference specifics when it feels organic, stay neutral-to-warm, and avoid sounding forced. Output only the reply.',
+      ].join('\n')
+      : [
+        'Recent group conversation (oldest first):',
+        transcript,
+        '',
+        'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
+      ].join('\n');
+
   const reply = await requestLLMCompletion(
     [
       { role: 'system', content: systemPrompt },
