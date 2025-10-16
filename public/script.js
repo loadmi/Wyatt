@@ -108,6 +108,21 @@ class BotController {
         this.groupSendBtn = document.getElementById('groupSendBtn');
         this.loadingGroups = false;
         this.sendingGroupMessage = false;
+        this.chatSelect = document.getElementById('chatSelect');
+        this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
+        this.chatMessagesContainer = document.getElementById('chatMessages');
+        this.chatNotice = document.getElementById('chatNotice');
+        this.chatComposerForm = document.getElementById('chatComposer');
+        this.chatMessageInput = document.getElementById('chatMessageInput');
+        this.chatSendBtn = document.getElementById('chatSendBtn');
+        this.chats = [];
+        this.loadingChats = false;
+        this.fetchingChatMessages = false;
+        this.selectedChatId = null;
+        this.chatPollTimer = null;
+        this.chatTabActive = false;
+        this.lastChatSignature = null;
+        this.sendingChatMessage = false;
         this.botIsRunning = false;
         this.accountList = document.getElementById('accountList');
         this.accountForm = document.getElementById('accountForm');
@@ -150,6 +165,21 @@ class BotController {
         if (this.groupSendBtn) {
             this.groupSendBtn.addEventListener('click', () => this.sendGroupSentiment());
         }
+        if (this.chatSelect) {
+            this.chatSelect.addEventListener('change', () => this.handleChatSelectionChange());
+        }
+        if (this.chatRefreshBtn) {
+            this.chatRefreshBtn.addEventListener('click', () => this.loadChats());
+        }
+        if (this.chatComposerForm) {
+            this.chatComposerForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.sendChatMessage();
+            });
+        }
+        if (this.chatMessageInput) {
+            this.chatMessageInput.addEventListener('input', () => this.updateChatControlsState());
+        }
 
         // Check initial status
         this.checkStatus();
@@ -165,6 +195,9 @@ class BotController {
 
         // Attempt to load group list (may warn if bot is stopped)
         this.loadGroups(false);
+
+        // Attempt to load chats list
+        this.loadChats(false);
 
         // Check status every 5 seconds
         setInterval(() => this.checkStatus(), 5000);
@@ -197,8 +230,27 @@ class BotController {
             this.stopBtn.disabled = true;
         }
         this.updateGroupControlsState();
+        this.updateChatControlsState();
+
+        if (this.botIsRunning) {
+            this.clearChatNotice();
+            if (this.chatTabActive && this.selectedChatId) {
+                this.ensureChatPolling();
+            }
+        } else {
+            this.stopChatPolling();
+            this.showChatNotice('Start the bot to resume live chat monitoring.');
+        }
+
         if (this.botIsRunning && !previouslyRunning) {
             this.loadGroups(false);
+            this.loadChats(false);
+        }
+
+        if (!this.botIsRunning && previouslyRunning) {
+            this.clearChatMessages();
+            this.selectedChatId = null;
+            this.updateChatControlsState();
         }
     }
 
@@ -807,6 +859,344 @@ class BotController {
         }
     }
 
+    groupChatsByKind() {
+        const buckets = { group: [], channel: [], private: [] };
+        if (!Array.isArray(this.chats)) {
+            return buckets;
+        }
+        this.chats.forEach(chat => {
+            if (chat && buckets[chat.kind]) {
+                buckets[chat.kind].push(chat);
+            }
+        });
+        return buckets;
+    }
+
+    populateChatSelect(previousValue) {
+        if (!this.chatSelect) return;
+
+        this.chatSelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Choose a chat…';
+        this.chatSelect.appendChild(placeholder);
+
+        const labels = {
+            group: 'Group Chats',
+            channel: 'Channels',
+            private: 'Direct Messages',
+        };
+
+        const buckets = this.groupChatsByKind();
+        ['group', 'channel', 'private'].forEach(kind => {
+            const chats = buckets[kind];
+            if (!chats || chats.length === 0) return;
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = labels[kind];
+            chats.forEach(chat => {
+                const option = document.createElement('option');
+                option.value = chat.id;
+                option.textContent = chat.title;
+                optgroup.appendChild(option);
+            });
+            this.chatSelect.appendChild(optgroup);
+        });
+
+        const valueToRestore = previousValue && this.chats.some(chat => chat.id === previousValue) ? previousValue : '';
+        if (valueToRestore) {
+            this.chatSelect.value = valueToRestore;
+        }
+        if (!this.chatSelect.value && this.chats.length > 0) {
+            this.chatSelect.value = this.chats[0].id;
+        }
+
+        this.handleChatSelectionChange();
+    }
+
+    async loadChats(logOnSuccess = true) {
+        if (!this.chatSelect) return;
+
+        if (!this.botIsRunning) {
+            this.chatSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Start the bot to load chats';
+            this.chatSelect.appendChild(option);
+            this.loadingChats = false;
+            this.updateChatControlsState();
+            return;
+        }
+
+        if (this.loadingChats) {
+            return;
+        }
+
+        const previousValue = this.chatSelect.value;
+        this.loadingChats = true;
+        this.updateChatControlsState();
+        this.chatSelect.innerHTML = '';
+        const loadingOption = document.createElement('option');
+        loadingOption.value = '';
+        loadingOption.textContent = 'Loading chats...';
+        this.chatSelect.appendChild(loadingOption);
+        this.clearChatNotice();
+
+        try {
+            const response = await fetch('/api/telegram/chats');
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Unable to load chats');
+            }
+
+            this.chats = Array.isArray(data.chats) ? data.chats : [];
+            this.populateChatSelect(previousValue);
+
+            if (logOnSuccess) {
+                this.log(`Chat list refreshed (${this.chats.length} found)`);
+            }
+        } catch (error) {
+            const message = (error && error.message) ? error.message : 'Unable to load chats';
+            this.showChatNotice(message, 'error');
+            this.chatSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Unable to load chats';
+            this.chatSelect.appendChild(option);
+            this.log('❌ ' + message);
+        } finally {
+            this.loadingChats = false;
+            this.updateChatControlsState();
+        }
+    }
+
+    handleChatSelectionChange() {
+        if (!this.chatSelect) {
+            return;
+        }
+        const value = this.chatSelect.value;
+        this.selectedChatId = value || null;
+        this.updateChatControlsState();
+
+        if (!this.selectedChatId) {
+            this.stopChatPolling();
+            this.clearChatMessages();
+            return;
+        }
+
+        this.clearChatNotice();
+        this.fetchAndRenderChatMessages(true);
+        this.ensureChatPolling();
+    }
+
+    updateChatControlsState() {
+        const hasSelection = !!this.selectedChatId;
+        if (this.chatRefreshBtn) {
+            this.chatRefreshBtn.disabled = this.loadingChats || !this.botIsRunning;
+        }
+        if (this.chatSelect) {
+            this.chatSelect.disabled = this.loadingChats || !this.botIsRunning;
+        }
+        const canType = hasSelection && this.botIsRunning && !this.sendingChatMessage;
+        if (this.chatMessageInput) {
+            this.chatMessageInput.disabled = !canType;
+        }
+        const messageReady = canType && this.chatMessageInput && this.chatMessageInput.value.trim().length > 0;
+        if (this.chatSendBtn) {
+            this.chatSendBtn.disabled = !messageReady;
+        }
+    }
+
+    showChatNotice(message, tone = 'info') {
+        if (!this.chatNotice) return;
+        if (!message) {
+            this.clearChatNotice();
+            return;
+        }
+        this.chatNotice.textContent = message;
+        if (tone === 'error') {
+            this.chatNotice.classList.add('error');
+        } else {
+            this.chatNotice.classList.remove('error');
+        }
+        this.chatNotice.style.display = '';
+    }
+
+    clearChatNotice() {
+        if (!this.chatNotice) return;
+        this.chatNotice.textContent = '';
+        this.chatNotice.classList.remove('error');
+        this.chatNotice.style.display = 'none';
+    }
+
+    clearChatMessages() {
+        if (!this.chatMessagesContainer) return;
+        this.chatMessagesContainer.innerHTML = '';
+        this.chatMessagesContainer.classList.add('empty');
+        this.chatMessagesContainer.classList.remove('is-loading');
+        this.chatMessagesContainer.setAttribute('aria-busy', 'false');
+        this.lastChatSignature = null;
+    }
+
+    isChatNearBottom() {
+        if (!this.chatMessagesContainer) return true;
+        const threshold = 120;
+        const { scrollTop, scrollHeight, clientHeight } = this.chatMessagesContainer;
+        return scrollHeight - (scrollTop + clientHeight) < threshold;
+    }
+
+    scrollChatToBottom() {
+        if (!this.chatMessagesContainer) return;
+        this.chatMessagesContainer.scrollTop = this.chatMessagesContainer.scrollHeight;
+    }
+
+    ensureChatPolling() {
+        if (!this.chatTabActive || !this.selectedChatId || !this.botIsRunning) {
+            this.stopChatPolling();
+            return;
+        }
+        if (this.chatPollTimer) {
+            return;
+        }
+        this.chatPollTimer = setInterval(() => {
+            this.fetchAndRenderChatMessages(false);
+        }, 5000);
+    }
+
+    stopChatPolling() {
+        if (this.chatPollTimer) {
+            clearInterval(this.chatPollTimer);
+            this.chatPollTimer = null;
+        }
+    }
+
+    async fetchAndRenderChatMessages(forceScroll = false) {
+        if (!this.selectedChatId || !this.chatMessagesContainer || !this.botIsRunning) {
+            return;
+        }
+        if (this.fetchingChatMessages) {
+            return;
+        }
+
+        this.fetchingChatMessages = true;
+        const stickToBottom = forceScroll || this.isChatNearBottom();
+        this.chatMessagesContainer.classList.remove('empty');
+        this.chatMessagesContainer.classList.add('is-loading');
+        this.chatMessagesContainer.setAttribute('aria-busy', 'true');
+
+        try {
+            const response = await fetch(`/api/telegram/chats/${encodeURIComponent(this.selectedChatId)}/messages?limit=120`);
+            const data = await response.json();
+
+            if (!response.ok || !data.success || !Array.isArray(data.messages)) {
+                throw new Error(data?.message || 'Unable to load messages');
+            }
+
+            const signatureBefore = this.lastChatSignature;
+            this.renderChatMessages(data.messages);
+            const hasNewMessages = this.lastChatSignature && this.lastChatSignature !== signatureBefore;
+            if (forceScroll || stickToBottom || hasNewMessages) {
+                this.scrollChatToBottom();
+            }
+        } catch (error) {
+            const message = (error && error.message) ? error.message : 'Unable to load messages';
+            this.showChatNotice(message, 'error');
+        } finally {
+            if (this.chatMessagesContainer) {
+                this.chatMessagesContainer.classList.remove('is-loading');
+                this.chatMessagesContainer.setAttribute('aria-busy', 'false');
+            }
+            this.fetchingChatMessages = false;
+        }
+    }
+
+    renderChatMessages(messages) {
+        if (!this.chatMessagesContainer) return;
+        this.chatMessagesContainer.innerHTML = '';
+
+        if (!Array.isArray(messages) || messages.length === 0) {
+            this.chatMessagesContainer.classList.add('empty');
+            this.lastChatSignature = null;
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        messages.forEach(message => {
+            if (!message || typeof message.text !== 'string') return;
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-message' + (message.isOutbound ? ' outgoing' : '');
+            bubble.dataset.messageId = message.id || '';
+
+            const meta = document.createElement('div');
+            meta.className = 'chat-meta';
+            const senderSpan = document.createElement('span');
+            senderSpan.textContent = message.isOutbound ? 'You' : (message.sender || 'Participant');
+            meta.appendChild(senderSpan);
+            const timeSpan = document.createElement('span');
+            if (Number.isFinite(message.timestamp)) {
+                timeSpan.textContent = new Date(message.timestamp).toLocaleTimeString();
+            } else {
+                timeSpan.textContent = '';
+            }
+            meta.appendChild(timeSpan);
+
+            const text = document.createElement('div');
+            text.className = 'chat-text';
+            text.textContent = message.text;
+
+            bubble.appendChild(meta);
+            bubble.appendChild(text);
+            fragment.appendChild(bubble);
+        });
+
+        this.chatMessagesContainer.appendChild(fragment);
+        this.chatMessagesContainer.classList.remove('empty');
+
+        const last = messages[messages.length - 1];
+        this.lastChatSignature = last ? `${last.id}:${last.timestamp ?? ''}` : null;
+    }
+
+    async sendChatMessage() {
+        if (!this.selectedChatId || !this.chatMessageInput || !this.botIsRunning || this.sendingChatMessage) {
+            return;
+        }
+
+        const text = this.chatMessageInput.value.trim();
+        if (!text) {
+            this.updateChatControlsState();
+            return;
+        }
+
+        this.sendingChatMessage = true;
+        this.updateChatControlsState();
+        this.clearChatNotice();
+
+        try {
+            const response = await fetch(`/api/telegram/chats/${encodeURIComponent(this.selectedChatId)}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to send message.');
+            }
+            this.chatMessageInput.value = '';
+            this.updateChatControlsState();
+            await this.fetchAndRenderChatMessages(true);
+            this.log('📤 Manual reply sent.');
+        } catch (error) {
+            const message = (error && error.message) ? error.message : 'Failed to send message.';
+            this.showChatNotice(message, 'error');
+            this.log('❌ ' + message);
+        } finally {
+            this.sendingChatMessage = false;
+            this.updateChatControlsState();
+        }
+    }
+
     toggleModelVisibility() {
         const p = this.providerSelect.value;
         if (p === 'openrouter') {
@@ -1195,6 +1585,19 @@ class BotController {
             window.requestAnimationFrame(() => this.resizeCharts());
         } else if (tabId === 'activity' && this.logDiv) {
             this.logDiv.scrollTop = this.logDiv.scrollHeight;
+        }
+
+        this.chatTabActive = tabId === 'chats';
+        if (this.chatTabActive) {
+            this.updateChatControlsState();
+            if (this.botIsRunning && this.chats.length === 0 && !this.loadingChats) {
+                this.loadChats();
+            } else if (this.selectedChatId && this.botIsRunning) {
+                this.fetchAndRenderChatMessages(false);
+            }
+            this.ensureChatPolling();
+        } else {
+            this.stopChatPolling();
         }
     }
 

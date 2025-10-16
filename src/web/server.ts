@@ -8,6 +8,9 @@ import {
   startBotNonInteractive,
   listTelegramGroups,
   sendSentimentToGroup,
+  listTelegramChats,
+  fetchChatMessages,
+  sendChatMessage,
 } from "../telegram/client";
 import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
@@ -161,6 +164,62 @@ export function startWebServer(): void {
       res.json({ success: true, groups });
     } catch (error) {
       const message = (error as any)?.message || "Failed to load group list.";
+      const status = message.includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.get("/api/telegram/chats", async (req: Request, res: Response) => {
+    try {
+      const chats = await listTelegramChats();
+      res.json({ success: true, chats });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat list.";
+      const status = message.includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.get("/api/telegram/chats/:chatId/messages", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const limitRaw = req.query.limit;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    let limit = 80;
+    if (typeof limitRaw === "string" && limitRaw.trim() !== "") {
+      const parsed = Number(limitRaw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        limit = Math.min(Math.trunc(parsed), 200);
+      }
+    }
+
+    try {
+      const messages = await fetchChatMessages(chatId, limit);
+      res.json({ success: true, messages });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat messages.";
+      const status = message.includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/telegram/chats/:chatId/messages", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { text } = req.body ?? {};
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+    if (typeof text !== "string" || text.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Message text is required." });
+    }
+
+    try {
+      await sendChatMessage(chatId, text);
+      res.status(201).json({ success: true });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to send message.";
       const status = message.includes("not running") ? 409 : 500;
       res.status(status).json({ success: false, message });
     }
