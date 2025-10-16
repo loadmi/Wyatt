@@ -794,6 +794,7 @@
             grid-template-columns: minmax(230px, 280px) 1fr;
             gap: 20px;
             align-items: stretch;
+            height: 70vh; /* keep chats bounded and enable internal scrolling */
         }
 
         .chat-sidebar {
@@ -803,7 +804,12 @@
             border: 1px solid var(--log-border);
             border-radius: 12px;
             padding: 16px;
-            min-height: 420px;
+            /* Make the search, list, and empty-state stack with the list filling available space */
+            grid-template-rows: auto 1fr auto;
+            align-content: start; /* prevent vertical centering on tall containers */
+            height: 100%;
+            min-height: 0; /* allow inner 1fr to shrink so list can scroll */
+            overflow: hidden; /* avoid sidebar overflowing the layout */
         }
 
         .chat-search input {
@@ -823,8 +829,13 @@
         .chat-list {
             display: grid;
             gap: 8px;
-            max-height: 420px;
+            /* Fill available space in sidebar and scroll */
+            min-height: 0;
             overflow-y: auto;
+            /* Prevent few results from stretching to fill height */
+            align-content: start;
+            align-items: start;
+            grid-auto-rows: max-content;
         }
 
         .chat-list-item {
@@ -911,7 +922,9 @@
             border: 1px solid var(--log-border);
             border-radius: 12px;
             padding: 20px;
-            min-height: 420px;
+            /* Fill the grid area and allow inner scroll area to control overflow */
+            height: 100%;
+            min-height: 0;
         }
 
         .chat-thread-header {
@@ -936,6 +949,7 @@
             display: grid;
             gap: 12px;
             padding-right: 4px;
+            min-height: 0; /* allow 1fr track to shrink and scroll */
         }
 
         .chat-messages.empty {
@@ -1056,14 +1070,17 @@
 
             .chat-layout {
                 grid-template-columns: 1fr;
+                height: 60vh; /* slightly shorter on small screens */
             }
 
             .chat-sidebar {
-                min-height: auto;
+                /* keep the sidebar pieces aligned to the top on mobile as well */
+                align-content: start;
             }
 
             .chat-thread {
-                min-height: 360px;
+                height: 100%;
+                min-height: 0;
             }
         }
     </style>

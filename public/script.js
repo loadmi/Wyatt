@@ -188,6 +188,14 @@ class BotController {
         }
         if (this.chatMessageInput) {
             this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
+            // Send on Enter, newline on Shift+Enter
+            this.chatMessageInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    if (!this.chatSendBtn || this.chatSendBtn.disabled) return;
+                    this.submitChatMessage();
+                }
+            });
         }
         if (this.chatMessagesEl) {
             this.chatMessagesEl.addEventListener('scroll', () => this.handleChatScroll());
