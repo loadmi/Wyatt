@@ -6,6 +6,8 @@ export type PersistedState = {
   currentPersona?: string;
   llmProvider?: 'pollinations' | 'openrouter';
   openrouterModel?: string;
+  // Secret for OpenRouter (never returned to clients). Stored locally.
+  openrouterApiKey?: string;
   // Store resolved system prompt text to avoid dynamic imports at boot
   systemPrompt?: string;
   telegramAccounts?: TelegramAccount[];
@@ -28,7 +30,15 @@ function stateFilePath(): string {
 export function loadPersistedState(): PersistedState {
   const file = stateFilePath();
   try {
-    if (!fs.existsSync(file)) return {};
+    if (!fs.existsSync(file)) {
+      // Create an empty config file on first run for smoother setup
+      try {
+        fs.writeFileSync(file, JSON.stringify({}, null, 2), 'utf-8');
+      } catch {
+        // Ignore write errors here; subsequent saves will try again
+      }
+      return {};
+    }
     const raw = fs.readFileSync(file, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return {};

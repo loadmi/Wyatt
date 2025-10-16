@@ -64,6 +64,17 @@
             --tab-border: rgba(148, 163, 184, 0.4);
         }
 
+        /* Light theme readability tweaks */
+        .theme-light .account-card-tag {
+            background-color: rgba(37, 99, 235, 0.12);
+            color: #1e40af; /* blue-800 for contrast on light bg */
+        }
+
+        .theme-light .account-card.active .account-card-tag {
+            background-color: rgba(34, 197, 94, 0.16);
+            color: #166534; /* green-700 for contrast on light bg */
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -390,6 +401,35 @@
             font-weight: 600;
             color: var(--heading);
         }
+
+        /* Inline input + actions for API key row */
+        .inline-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #openrouterApiKeyInput {
+            min-width: 260px;
+        }
+        #openrouterApiKeySave,
+        #openrouterApiKeyClear {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--tab-border);
+            background: var(--tab-bg);
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #openrouterApiKeySave {
+            background: var(--button-start-bg);
+            color: var(--btn-text);
+            border: none;
+        }
+        #openrouterApiKeySave:hover { background: var(--button-start-bg-hover); }
+        #openrouterApiKeyClear:hover { filter: brightness(1.1); }
+        #openrouterKeyStatus { color: var(--subtle); font-size: 0.9rem; }
 
         select {
             background-color: var(--container-bg);
@@ -1178,7 +1218,7 @@
                 hidden>
                 <div class="panel-card">
                     <h2 class="panel-title">Persona &amp; LLM Settings</h2>
-                    <div class="config-grid">
+                    <div class="config-grid"> 
                         <div class="form-field">
                             <label for="personaSelect">Bot Personality</label>
                             <select id="personaSelect" class="persona-select">
@@ -1197,8 +1237,17 @@
                             <select id="openrouterModelSelect" class="model-select">
                                 <option value="">Loading models...</option>
                             </select>
-                        </div>
-                    </div>
+                        </div> 
+                    </div> 
+                        <div class="form-field" id="openrouterKeyRow" style="display:none"> 
+                        <label for="openrouterApiKeyInput">OpenRouter API Key</label> 
+                        <div class="inline-actions"> 
+                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off"> 
+                            <button type="button" id="openrouterApiKeySave">Save</button> 
+                            <button type="button" id="openrouterApiKeyClear">Clear</button> 
+                            <small id="openrouterKeyStatus" aria-live="polite"></small> 
+                        </div> 
+                    </div> 
                 </div>
                 <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>

@@ -93,9 +93,10 @@ async function callPollinations(messages: ChatMessage[]): Promise<{ ok: boolean;
 }
 
 async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{ ok: boolean; status: number; text: string }> {
-  const key = process.env.OPENROUTER_API_KEY || '';
+  const cfg = appConfig() as any;
+  const key = (cfg.openrouterApiKey || '').trim();
   if (!key) {
-    console.warn('[LLM] OpenRouter key missing. Set OPENROUTER_API_KEY in .env');
+    console.warn('[LLM] OpenRouter key missing. Add it in the dashboard settings.');
     return { ok: false, status: 0, text: '' };
   }
   try {

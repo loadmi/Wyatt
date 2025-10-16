@@ -32,8 +32,8 @@ const app: Express = express();
 const PORT = 8080;
 
 export function startWebServer(): void {
-  // Serve static files from the 'public' directory
-  app.use(express.static(path.join(__dirname, "../../public")));
+  // Serve static files from the project 'public' directory (works in dev and prod)
+  app.use(express.static(path.join(process.cwd(), "public")));
 
   // Add JSON body parser middleware
   app.use(express.json());
@@ -125,6 +125,10 @@ export function startWebServer(): void {
         }
       }
 
+      if (typeof (persisted as any).openrouterApiKey === 'string' && (persisted as any).openrouterApiKey.trim()) {
+        (updates as any).openrouterApiKey = (persisted as any).openrouterApiKey.trim();
+      }
+
       if (Array.isArray(persisted.telegramAccounts)) {
         updates.telegramAccounts = persisted.telegramAccounts;
       }
@@ -135,6 +139,14 @@ export function startWebServer(): void {
 
       if (Object.keys(updates).length > 0) {
         setConfig(updates as Partial<ReturnType<typeof appConfig>>);
+      }
+
+      // One-time migration: if env key is set and not yet in config, store it
+      const cfg = appConfig() as any;
+      const envKey = (process.env.OPENROUTER_API_KEY || '').trim();
+      if (!cfg.openrouterApiKey && envKey) {
+        setConfig({ openrouterApiKey: envKey } as any);
+        console.log("Migrated OPENROUTER_API_KEY from environment to persisted configuration.");
       }
 
       if (getTelegramAccounts().length === 0) {
@@ -424,7 +436,7 @@ export function startWebServer(): void {
   // LLM provider + model configuration
   app.get("/api/config/llm", async (req: Request, res: Response) => {
     const cfg = appConfig() as any;
-    const hasOpenrouterKey = !!(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim());
+    const hasOpenrouterKey = !!(cfg.openrouterApiKey && String(cfg.openrouterApiKey).trim());
     // A small curated list of common OpenRouter models (can be extended)
     const availableOpenRouterModels = [
       "google/gemini-2.0-flash-001",
@@ -454,6 +466,15 @@ export function startWebServer(): void {
     setConfig(updates);
     const cfg = appConfig() as any;
     res.status(201).json({ success: true, provider: cfg.llmProvider, openrouterModel: cfg.openrouterModel });
+  });
+
+  // Manage OpenRouter API key (never returns the key value)
+  app.post("/api/config/llm/key", async (req: Request, res: Response) => {
+    const { key } = req.body || {};
+    const next = (typeof key === 'string' ? key : '').trim();
+    setConfig({ openrouterApiKey: next } as any);
+    const cfg = appConfig() as any;
+    res.status(201).json({ success: true, hasOpenrouterKey: !!(cfg.openrouterApiKey && cfg.openrouterApiKey.trim()) });
   });
 
   app.listen(PORT, async () => {

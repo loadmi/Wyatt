@@ -6,7 +6,7 @@ A TypeScript-based Telegram bot designed for educational purposes to engage with
 
 **Account Safety:** Automating a user account is against Telegram's Terms of Service. Doing this, especially in a way that could be seen as spam, puts your account at high risk of being **banned permanently**. **It is strongly recommended to use a secondary, disposable phone number and account for this project, not your personal one.**
 
-**Security:** Your `API_ID`, `API_HASH`, and especially your `SESSION_STRING` are highly sensitive. They grant full access to your Telegram account. Do not share them, commit them to Git, or expose them publicly. We use a `.env` file to keep them safe.
+**Security:** Your `API_ID`, `API_HASH`, and especially your `SESSION_STRING` are highly sensitive. They grant full access to your Telegram account. Do not share them, commit them to Git, or expose them publicly. Telegram credentials are now managed via the in-app dashboard and saved to a local config file (`data/config.json`, which is git-ignored). Do not put Telegram credentials in `.env`.
 
 ## Prerequisites
 
@@ -21,9 +21,10 @@ A TypeScript-based Telegram bot designed for educational purposes to engage with
    npm install
    ```
 
-3. Configure your environment:
-   - Copy your `API_ID` and `API_HASH` to the `.env` file
-   - Leave `SESSION_STRING` empty for the first run
+3. Configure Telegram in the dashboard (no secrets in `.env`):
+   - Run the app and open the web UI
+   - Go to Configuration → Telegram Accounts and add your `API_ID` and `API_HASH`
+   - Start the bot from the dashboard; the first time, complete the login in the server console. The session string is saved automatically.
 
 ## Usage
 
@@ -35,8 +36,8 @@ npm run dev
 This will:
 - Start the web interface at `http://localhost:3000`
 - Automatically recompile TypeScript on changes
-- Prompt you to log in to Telegram on first run
-- Display your session string for copying to `.env`
+- Let you add a Telegram account in the dashboard and, upon starting the bot, prompt you to log in via the server console on first run
+- Persist your Telegram session automatically in the local config
 
 ### Production Mode
 ```bash
@@ -105,19 +106,9 @@ The bot supports two LLM providers:
 - `Pollinations` (default)
 - `OpenRouter`
 
-Use the dashboard to choose the provider; if `OpenRouter` is selected, you can also choose the model. To enable OpenRouter, add the following to your `.env`:
+Use the dashboard to choose the provider; if `OpenRouter` is selected, you can set the model and manage the API key directly from the configuration panel. The OpenRouter key is stored locally in `data/config.json` and is never exposed via the API.
 
-```
-OPENROUTER_API_KEY=your_api_key_here
-```
-
-Optional environment defaults:
-
-```
-# Default provider and model (can be changed in the dashboard)
-LLM_PROVIDER=openrouter
-OPENROUTER_MODEL=google/gemini-2.0-flash-001
-```
+Note: `.env` is no longer used for `OPENROUTER_API_KEY`, `LLM_PROVIDER`, or `OPENROUTER_MODEL`. Manage these from the dashboard.
 
 ## Metrics Dashboard
 
@@ -144,6 +135,10 @@ The dashboard settings are saved to a local JSON file so that choices survive re
 
 - File: `data/config.json`
 - Persisted keys: `currentPersona`, `llmProvider`, `openrouterModel`
+
+Notes:
+- The file is created automatically on first run if it does not exist.
+- Telegram accounts and sessions are stored here (redacted in API responses).
 
 On startup, the server loads this file and applies values (validated against available personas and supported providers/models). Editing or deleting the file resets to defaults.
 

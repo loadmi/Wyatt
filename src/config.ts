@@ -50,9 +50,11 @@ const config = {
   systemPrompt: JSON.stringify(granny),
   // Track currently selected persona filename for dashboard persistence
   currentPersona: "granny.json",
-  // LLM provider configuration
-  llmProvider: (process.env.LLM_PROVIDER as "pollinations" | "openrouter") || "openrouter",
-  openrouterModel: process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001",
+  // LLM provider configuration (persisted; defaults used on first run)
+  llmProvider: "openrouter" as "pollinations" | "openrouter",
+  openrouterModel: "google/gemini-2.0-flash-001",
+  // Secret managed via dashboard and persisted locally
+  openrouterApiKey: "",
   telegramAccounts: [] as TelegramAccount[],
   activeAccountId: null as string | null,
 };
@@ -113,6 +115,7 @@ function persistConfig(): void {
       currentPersona: (config as any).currentPersona,
       llmProvider: (config as any).llmProvider,
       openrouterModel: (config as any).openrouterModel,
+      openrouterApiKey: (config as any).openrouterApiKey,
       systemPrompt: (config as any).systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,

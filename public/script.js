@@ -79,6 +79,11 @@ class BotController {
         this.providerSelect = document.getElementById('providerSelect');
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
         this.openrouterModelRow = document.getElementById('openrouterModelRow');
+        this.openrouterKeyRow = document.getElementById('openrouterKeyRow');
+        this.openrouterApiKeyInput = document.getElementById('openrouterApiKeyInput');
+        this.openrouterApiKeySave = document.getElementById('openrouterApiKeySave');
+        this.openrouterApiKeyClear = document.getElementById('openrouterApiKeyClear');
+        this.openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -114,6 +119,17 @@ class BotController {
         this.accountFormTitle = document.getElementById('accountFormTitle');
         this.accountNotice = document.getElementById('accountNotice');
         this.accountIdInput = document.getElementById('accountId');
+
+        if (this.openrouterApiKeySave) {
+            this.openrouterApiKeySave.addEventListener('click', () => this.saveOpenrouterKey());
+        }
+        // Key is visible by default; no reveal/hide toggle
+        if (this.openrouterApiKeyClear) {
+            this.openrouterApiKeyClear.addEventListener('click', () => {
+                if (this.openrouterApiKeyInput) this.openrouterApiKeyInput.value = '';
+                this.saveOpenrouterKey();
+            });
+        }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
         this.accountApiHashInput = document.getElementById('accountApiHash');
@@ -222,7 +238,16 @@ class BotController {
         // Check status every 5 seconds
         setInterval(() => this.checkStatus(), 5000);
 
-        this.setupMetricsDashboard();
+        // Initialize charts if Chart.js is available; otherwise continue without graphs
+        try {
+            if (typeof window !== 'undefined' && window.Chart) {
+                this.setupMetricsDashboard();
+            } else {
+                this.log('Charts not available (skipping graph init)');
+            }
+        } catch (e) {
+            try { this.log('Charts init failed, continuing without graphs'); } catch {}
+        }
     }
 
     async checkStatus() {
@@ -399,6 +424,12 @@ class BotController {
 
             // Toggle visibility based on provider
             this.toggleModelVisibility();
+            if (this.openrouterKeyStatus) {
+                this.openrouterKeyStatus.textContent = data.hasOpenrouterKey ? 'Key set' : 'No key set';
+            }
+            if (data.provider === 'openrouter' && !data.hasOpenrouterKey) {
+                this.log('âš  OpenRouter selected but no API key set in settings');
+            }
 
             if (data.provider === 'openrouter' && !data.hasOpenrouterKey) {
                 this.log('⚠️ OpenRouter selected but no OPENROUTER_API_KEY found in server .env');
@@ -574,7 +605,7 @@ class BotController {
                 const acct = Array.isArray(this.accounts) ? this.accounts.find(a => a.id === accountId) : null;
                 const hasSession = !!(acct && (acct.hasSession === true || (typeof acct.sessionString === 'string' && acct.sessionString.trim().length > 0)));
                 if (hasSession) {
-                    this.log(`�o. Session detected for ${label}. You can set it active now.`);
+                    this.log(`✅ Session detected for ${label}. You can set it active now.`);
                     this.showAccountNotice(`Session saved for "${label}". You can set it active.`, 8000);
                     clearInterval(this._loginPollInterval);
                     this._loginPollInterval = null;
@@ -620,10 +651,10 @@ class BotController {
             if (!response.ok || !data.success) {
                 throw new Error(data?.message || 'Failed to start console login.');
             }
-            this.log('�o. ' + data.message);
+            this.log('✅ ' + data.message);
             this.pollForSession(accountId, label, 120000);
         } catch (error) {
-            this.log('�?O ' + (error && error.message ? error.message : 'Error starting console login'));
+            this.log('❌ ' + (error && error.message ? error.message : 'Error starting console login'));
         }
     }
 
@@ -1808,7 +1839,41 @@ class BotController {
             this.providerChart.update('none');
         }
     }
+
+    // Ensure model and key rows reflect provider selection
+    toggleModelVisibility() {
+        const provider = this.providerSelect ? this.providerSelect.value : 'pollinations';
+        const show = provider === 'openrouter';
+        if (this.openrouterModelRow) this.openrouterModelRow.style.display = show ? '' : 'none';
+        if (this.openrouterKeyRow) this.openrouterKeyRow.style.display = show ? '' : 'none';
+    }
+
+    async saveOpenrouterKey() {
+        const input = this.openrouterApiKeyInput;
+        if (!input) return;
+        const key = (input.value || '').trim();
+        try {
+            const resp = await fetch('/api/config/llm/key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to save key');
+            }
+            if (this.openrouterKeyStatus) {
+                this.openrouterKeyStatus.textContent = data.hasOpenrouterKey ? 'Key set' : 'Key cleared';
+            }
+            this.log('OpenRouter API key saved');
+            // For safety, clear the input after saving
+            input.value = '';
+        } catch (err) {
+            this.log('Error saving OpenRouter key: ' + (err && err.message ? err.message : String(err)));
+        }
+    }
 }
+
 
 class TabController {
     constructor(controller) {
@@ -1921,6 +1986,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     controller.refreshChartTheme();
+    // Ensure status polling starts even if earlier code aborted
+    if (typeof controller.checkStatus === 'function') {
+        try { controller.checkStatus(); } catch (e) {}
+        try { setInterval(() => controller.checkStatus(), 5000); } catch (e) {}
+    }
 });
 
 
