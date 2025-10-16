@@ -226,6 +226,51 @@ console.log(userPrompt)
   return reply && reply.trim().length > 0 ? reply.trim() : fallback;
 }
 
+export async function generatePrivateBlendMessage(
+  samples: SentimentSample[],
+  contactName?: string,
+): Promise<string> {
+  const fallback = 'Sounds good—talk soon.';
+  if (!samples || samples.length === 0) {
+    return fallback;
+  }
+
+  const displayName = (contactName || '').trim() || 'them';
+  const normalized = samples.map((sample) => {
+    const speaker = (sample.speaker || 'Participant').trim();
+    const text = (sample.text || '').trim();
+    const ts = sample.timestamp ? new Date(sample.timestamp).toISOString() : '';
+    return ts ? `[${ts}] ${speaker}: ${text}` : `${speaker}: ${text}`;
+  });
+
+  const transcript = normalized.join('\n');
+  const systemPrompt = [
+    'You write casual Telegram DM replies as the user.',
+    `Keep the tone warm and natural with ${displayName}.`,
+    'Blend into the existing conversation without introducing new commitments.',
+    'If nothing specific fits, reply with a generic acknowledgment that keeps rapport without asking questions.',
+    'One concise line (max ~180 characters). No questions, no requests for action, no links, no hashtags.',
+    'Output only the reply text.',
+  ].join(' ');
+
+  const userPrompt = [
+    `Recent private conversation with ${displayName} (oldest first):`,
+    transcript,
+    '',
+    'Write the next short reply as "You" that feels like a natural continuation. Output only the message.',
+  ].join('\n');
+
+  const reply = await requestLLMCompletion(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    { fallback },
+  );
+
+  return reply && reply.trim().length > 0 ? reply.trim() : fallback;
+}
+
 export async function getResponse(messages: ChatMessage[]): Promise<string> {
   const { maxInput, maxSystem } = getInputLimits();
   const FALLBACKS = [

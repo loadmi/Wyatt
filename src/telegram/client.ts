@@ -8,7 +8,7 @@ import { NewMessage } from "telegram/events";
 import input from "input";
 import { messageHandler } from "./handlers";
 import { botStarted, botStopped } from "../metrics";
-import { generateSentimentMessage, SentimentSample } from "../llm/llm";
+import { generateSentimentMessage, generatePrivateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
 
@@ -637,52 +637,39 @@ export async function sendMessageToChat(chatId: string, text: string): Promise<{
   }
 }
 
-async function collectGroupSamples(inputPeer: any): Promise<SentimentSample[]> {
+type BlendTarget = Pick<ChatCacheEntry, "title" | "type" | "inputPeer">;
+
+async function collectBlendSamples(target: BlendTarget): Promise<SentimentSample[]> {
   const MAX_MESSAGES = 60;
   const MAX_CHARACTERS = 6000;
   const samples: SentimentSample[] = [];
   let charCount = 0;
 
   try {
-    const iterator = client.iterMessages(inputPeer, { limit: MAX_MESSAGES });
+    const iterator = client.iterMessages(target.inputPeer, { limit: MAX_MESSAGES });
     for await (const message of iterator) {
       if (!message) continue;
-      const text = typeof message.message === "string" ? message.message.trim() : "";
+      const rawText = (message as any)?.message;
+      const text = typeof rawText === "string" ? rawText.trim() : "";
       if (!text) continue;
 
-      const senderName = (() => {
-        try {
-          const sender: any = (message as any).sender;
-          if (sender?.title) return String(sender.title);
-          if (sender?.firstName || sender?.lastName) {
-            return [sender.firstName, sender.lastName].filter(Boolean).join(" ").trim() || "Participant";
-          }
-          if (sender?.username) return String(sender.username);
-        } catch { }
-        const senderId = (message as any)?.senderId;
-        if (typeof senderId === "bigint" || typeof senderId === "number" || typeof senderId === "string") {
-          return `User ${senderId}`;
+      const speaker = (() => {
+        if ((message as any)?.out) {
+          return "You";
         }
-        return "Participant";
+        if (target.type === "private") {
+          return target.title || "Contact";
+        }
+        return describeSender(message, target.title || "Participant");
       })();
 
-      const timestamp = (() => {
-        const date: any = (message as any).date;
-        if (date instanceof Date) return date.getTime();
-        if (typeof date === "number") return date * 1000;
-        if (date && typeof date.valueOf === "function") {
-          const v = Number(date.valueOf());
-          if (Number.isFinite(v)) return v;
-        }
-        return undefined;
-      })();
-
-      samples.push({ speaker: senderName, text, timestamp });
+      const timestamp = normaliseTimestamp((message as any)?.date);
+      samples.push({ speaker, text, timestamp });
       charCount += text.length;
       if (charCount >= MAX_CHARACTERS) break;
     }
   } catch (error) {
-    console.warn("Failed to iterate group messages:", (error as any)?.message || error);
+    console.warn("Failed to iterate chat messages:", (error as any)?.message || error);
   }
 
   samples.reverse();
@@ -692,7 +679,46 @@ async function collectGroupSamples(inputPeer: any): Promise<SentimentSample[]> {
   return samples;
 }
 
-export async function sendSentimentToGroup(groupId: string): Promise<{ success: boolean; message: string; preview?: string }> {
+async function sendBlendMessageWithTarget(
+  target: BlendTarget,
+  options: { nonPrivateLabel?: string } = {},
+): Promise<{ success: boolean; message: string; preview?: string }> {
+  const samples = await collectBlendSamples(target);
+  if (samples.length === 0) {
+    return { success: false, message: "No recent text messages found to analyse." };
+  }
+
+  let crafted = "";
+  try {
+    if (target.type === "private") {
+      crafted = await generatePrivateBlendMessage(samples, target.title);
+    } else {
+      crafted = await generateSentimentMessage(samples);
+    }
+  } catch (error) {
+    console.warn("Failed to generate blend message:", (error as any)?.message || error);
+    return { success: false, message: "LLM request failed." };
+  }
+
+  const trimmedTitle = (target.title || "").trim();
+  const label = trimmedTitle || (target.type === "private" ? "contact" : options.nonPrivateLabel || "chat");
+  const nonPrivateLabel = options.nonPrivateLabel || "chat";
+
+  try {
+    await client.sendMessage(target.inputPeer, { message: crafted });
+    return { success: true, message: `Sent message to ${label}.`, preview: crafted };
+  } catch (error) {
+    console.error("Failed to send blend message:", error);
+    if (target.type === "private") {
+      return { success: false, message: "Failed to send message to contact." };
+    }
+    return { success: false, message: `Failed to send message to ${nonPrivateLabel}.` };
+  }
+}
+
+export async function sendBlendMessageToChat(
+  chatId: string,
+): Promise<{ success: boolean; message: string; preview?: string }> {
   try {
     ensureClientReady();
   } catch (error) {
@@ -700,31 +726,52 @@ export async function sendSentimentToGroup(groupId: string): Promise<{ success: 
     return { success: false, message: msg };
   }
 
-  const entry = await resolveGroupInputPeer(groupId);
+  const entry = await resolveChatEntry(chatId);
   if (!entry) {
+    const fallback = await resolveGroupInputPeer(chatId);
+    if (fallback) {
+      const target: BlendTarget = { title: fallback.title, type: "group", inputPeer: fallback.inputPeer };
+      return sendBlendMessageWithTarget(target, { nonPrivateLabel: "group" });
+    }
+    return { success: false, message: "Chat not found or not accessible." };
+  }
+
+  const label = entry.type === "private"
+    ? "chat"
+    : entry.type === "group"
+      ? "group"
+      : entry.type === "channel"
+        ? "channel"
+        : "chat";
+  return sendBlendMessageWithTarget(entry, { nonPrivateLabel: label });
+}
+
+export async function sendSentimentToGroup(
+  groupId: string,
+): Promise<{ success: boolean; message: string; preview?: string }> {
+  try {
+    ensureClientReady();
+  } catch (error) {
+    const msg = (error as any)?.message || "Telegram client is not running";
+    return { success: false, message: msg };
+  }
+
+  const entry = await resolveChatEntry(groupId);
+  if (entry) {
+    if (entry.type === "private") {
+      return { success: false, message: "Group not found or not accessible." };
+    }
+    const label = entry.type === "channel" ? "channel" : "group";
+    return sendBlendMessageWithTarget(entry, { nonPrivateLabel: label });
+  }
+
+  const fallback = await resolveGroupInputPeer(groupId);
+  if (!fallback) {
     return { success: false, message: "Group not found or not accessible." };
   }
 
-  const samples = await collectGroupSamples(entry.inputPeer);
-  if (samples.length === 0) {
-    return { success: false, message: "No recent text messages found to analyse." };
-  }
-
-  let crafted = "";
-  try {
-    crafted = await generateSentimentMessage(samples);
-  } catch (error) {
-    console.warn("Failed to generate sentiment message:", (error as any)?.message || error);
-    return { success: false, message: "LLM request failed." };
-  }
-
-  try {
-    await client.sendMessage(entry.inputPeer, { message: crafted });
-    return { success: true, message: `Sent message to ${entry.title}.`, preview: crafted };
-  } catch (error) {
-    console.error("Failed to send sentiment message:", error);
-    return { success: false, message: "Failed to send message to group." };
-  }
+  const target: BlendTarget = { title: fallback.title, type: "group", inputPeer: fallback.inputPeer };
+  return sendBlendMessageWithTarget(target, { nonPrivateLabel: "group" });
 }
 
 // Graceful teardown of the Telegram client and handlers
