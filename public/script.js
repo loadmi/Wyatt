@@ -1307,10 +1307,17 @@ class BotController {
         }
 
         try {
-            const response = await fetch(`/api/chats/${encodeURIComponent(this.activeChatId)}`);
+            // Capture the chat id at request time to avoid race conditions
+            const requestedChatId = this.activeChatId;
+            const response = await fetch(`/api/chats/${encodeURIComponent(requestedChatId)}`);
             const data = await response.json().catch(() => ({}));
             if (!response.ok || data.success === false) {
                 throw new Error(data?.message || `Failed to load chat (${response.status})`);
+            }
+
+            // If the active chat changed while awaiting, bail out
+            if (this.activeChatId !== requestedChatId) {
+                return;
             }
 
             if (data.chat) {
@@ -1326,7 +1333,7 @@ class BotController {
             }
 
             const messages = Array.isArray(data.messages) ? data.messages : [];
-            const previous = this.chatRenderCache.get(this.activeChatId);
+            const previous = this.chatRenderCache.get(requestedChatId);
             const latestId = messages.length > 0 ? messages[messages.length - 1].id : null;
             const latestCount = messages.length;
 
@@ -1337,7 +1344,7 @@ class BotController {
                 return;
             }
 
-            this.chatRenderCache.set(this.activeChatId, {
+            this.chatRenderCache.set(requestedChatId, {
                 lastId: latestId,
                 count: latestCount,
                 timestamp: Date.now(),
