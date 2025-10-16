@@ -732,6 +732,314 @@
             color: var(--text);
         }
 
+        .chat-panel {
+            display: grid;
+            gap: 18px;
+        }
+
+        .chat-panel-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .chat-header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .chat-refresh-btn {
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: 1px solid var(--tab-border);
+            background: var(--tab-bg);
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .chat-refresh-btn:hover {
+            background: var(--tab-active-bg);
+            transform: translateY(-1px);
+        }
+
+        .chat-status {
+            min-height: 1.1rem;
+            font-size: 0.9rem;
+            color: var(--subtle);
+        }
+
+        .chat-status[hidden] {
+            display: none;
+        }
+
+        .chat-status[data-variant="error"] {
+            color: #fca5a5;
+        }
+
+        .chat-status[data-variant="success"] {
+            color: #86efac;
+        }
+
+        .chat-status[data-variant="warning"] {
+            color: #facc15;
+        }
+
+        .chat-layout {
+            display: grid;
+            grid-template-columns: minmax(230px, 280px) 1fr;
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        .chat-sidebar {
+            display: grid;
+            gap: 12px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 16px;
+            min-height: 420px;
+        }
+
+        .chat-search input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--tab-border);
+            background: var(--container-bg);
+            color: var(--text);
+        }
+
+        .chat-search input:focus {
+            outline: 2px solid #2563eb;
+            outline-offset: 1px;
+        }
+
+        .chat-list {
+            display: grid;
+            gap: 8px;
+            max-height: 420px;
+            overflow-y: auto;
+        }
+
+        .chat-list-item {
+            display: grid;
+            gap: 4px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .chat-list-item:hover {
+            background: var(--tab-bg);
+            transform: translateY(-1px);
+        }
+
+        .chat-list-item.active {
+            background: var(--tab-active-bg);
+            border-color: rgba(37, 99, 235, 0.4);
+        }
+
+        .chat-list-title {
+            font-weight: 600;
+            color: var(--heading);
+            margin: 0;
+        }
+
+        .chat-list-snippet {
+            font-size: 0.85rem;
+            color: var(--subtle);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-list-meta {
+            font-size: 0.75rem;
+            color: var(--subtle);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .chat-list-unread {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: rgba(37, 99, 235, 0.22);
+            color: rgba(191, 219, 254, 0.95);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .chat-list-type {
+            text-transform: uppercase;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+        }
+
+        .chat-empty-state {
+            font-size: 0.85rem;
+            color: var(--subtle);
+            text-align: center;
+            padding: 12px 0 0;
+        }
+
+        .chat-empty-state[hidden] {
+            display: none;
+        }
+
+        .chat-thread {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 14px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 420px;
+        }
+
+        .chat-thread-header {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .chat-thread-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--heading);
+        }
+
+        .chat-thread-meta {
+            font-size: 0.85rem;
+            color: var(--subtle);
+        }
+
+        .chat-messages {
+            overflow-y: auto;
+            display: grid;
+            gap: 12px;
+            padding-right: 4px;
+        }
+
+        .chat-messages.empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--subtle);
+            font-size: 0.9rem;
+        }
+
+        .chat-empty-hint {
+            padding: 0 12px;
+        }
+
+        .chat-message {
+            display: grid;
+            gap: 6px;
+            max-width: 88%;
+        }
+
+        .chat-message.inbound {
+            justify-self: flex-start;
+        }
+
+        .chat-message.outbound {
+            justify-self: flex-end;
+            text-align: right;
+        }
+
+        .chat-bubble {
+            background: var(--tab-bg);
+            border: 1px solid var(--tab-border);
+            border-radius: 12px;
+            padding: 10px 14px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.outbound .chat-bubble {
+            background: rgba(37, 99, 235, 0.28);
+            border-color: rgba(59, 130, 246, 0.36);
+        }
+
+        .chat-message-meta {
+            font-size: 0.75rem;
+            color: var(--subtle);
+        }
+
+        .chat-composer {
+            display: grid;
+            gap: 10px;
+        }
+
+        .chat-composer textarea {
+            width: 100%;
+            min-height: 72px;
+            resize: vertical;
+            border-radius: 10px;
+            border: 1px solid var(--tab-border);
+            background: var(--container-bg);
+            color: var(--text);
+            padding: 12px;
+            font-size: 0.95rem;
+        }
+
+        .chat-composer textarea:focus {
+            outline: 2px solid #2563eb;
+            outline-offset: 1px;
+        }
+
+        .chat-composer textarea:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .chat-composer-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .chat-composer-actions button {
+            padding: 10px 22px;
+            border-radius: 10px;
+            border: none;
+            background: var(--button-start-bg);
+            color: var(--btn-text);
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .chat-composer-actions button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            background: var(--button-start-bg-hover);
+        }
+
+        .chat-composer-actions button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         @media (max-width: 720px) {
             body {
                 padding: 18px 12px 36px;
@@ -744,6 +1052,18 @@
 
             .theme-toggle {
                 justify-content: flex-end;
+            }
+
+            .chat-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .chat-sidebar {
+                min-height: auto;
+            }
+
+            .chat-thread {
+                min-height: 360px;
             }
         }
     </style>
@@ -790,6 +1110,8 @@
                 aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">Configuration</button>
             <button id="tab-outreach" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-outreach" tabindex="-1" data-tab="outreach">Outreach</button>
+            <button id="tab-chats" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-chats" tabindex="-1" data-tab="chats">Chats</button>
             <button id="tab-metrics" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-metrics" tabindex="-1" data-tab="metrics">Metrics</button>
             <button id="tab-activity" class="tab-button" type="button" role="tab" aria-selected="false"
@@ -917,6 +1239,43 @@
                             <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
                             <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="panel-chats" class="tab-panel" role="tabpanel" aria-labelledby="tab-chats" hidden>
+                <div class="panel-card chat-panel">
+                    <div class="chat-panel-header">
+                        <div>
+                            <h2 class="panel-title">Live Conversations</h2>
+                            <p class="panel-subtext">Monitor the latest dialogues and respond instantly from the dashboard.</p>
+                        </div>
+                        <div class="chat-header-actions">
+                            <button id="chatRefreshBtn" type="button" class="chat-refresh-btn">Refresh</button>
+                        </div>
+                    </div>
+                    <div id="chatStatus" class="chat-status" role="status" aria-live="polite"></div>
+                    <div class="chat-layout">
+                        <aside class="chat-sidebar" aria-label="Available chats">
+                            <div class="chat-search">
+                                <input id="chatSearchInput" type="search" placeholder="Search chats…" autocomplete="off">
+                            </div>
+                            <div id="chatList" class="chat-list" role="listbox" aria-label="Chat list"></div>
+                            <div id="chatEmptyState" class="chat-empty-state" hidden>No chats yet. Start the bot and wait for a message.</div>
+                        </aside>
+                        <section class="chat-thread" aria-live="polite">
+                            <div class="chat-thread-header">
+                                <h3 id="chatActiveTitle">Pick a chat to preview</h3>
+                                <span id="chatActiveMeta" class="chat-thread-meta">Messages will appear here in real time.</span>
+                            </div>
+                            <div id="chatMessages" class="chat-messages" aria-busy="false"></div>
+                            <form id="chatComposer" class="chat-composer">
+                                <textarea id="chatMessageInput" placeholder="Write a reply…" aria-label="Reply message" disabled></textarea>
+                                <div class="chat-composer-actions">
+                                    <button id="chatSendBtn" type="submit" disabled>Send</button>
+                                </div>
+                            </form>
+                        </section>
                     </div>
                 </div>
             </section>

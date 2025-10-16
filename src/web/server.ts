@@ -8,6 +8,9 @@ import {
   startBotNonInteractive,
   listTelegramGroups,
   sendSentimentToGroup,
+  listChats,
+  getChatHistory,
+  sendMessageToChat,
 } from "../telegram/client";
 import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
@@ -178,6 +181,63 @@ export function startWebServer(): void {
       : result.message.includes("not running")
         ? 409
         : 500;
+    res.status(status).json(result);
+  });
+
+  app.get("/api/chats", async (req: Request, res: Response) => {
+    try {
+      const chats = await listChats();
+      res.json({ success: true, chats });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chats.";
+      const status = message.includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.get("/api/chats/:chatId", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    try {
+      const history = await getChatHistory(chatId);
+      res.json({ success: true, ...history });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat history.";
+      const lowered = message.toLowerCase();
+      const status = lowered.includes("not running")
+        ? 409
+        : lowered.includes("not found")
+          ? 404
+          : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/chats/:chatId/messages", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { message } = req.body || {};
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    const text = typeof message === "string" ? message : message != null ? String(message) : "";
+    if (!text.trim()) {
+      return res.status(400).json({ success: false, message: "Message text is required." });
+    }
+
+    const result = await sendMessageToChat(chatId, text);
+    const lowered = result.message.toLowerCase();
+    const status = result.success
+      ? 201
+      : lowered.includes("not running")
+        ? 409
+        : lowered.includes("not found")
+          ? 404
+          : 400;
     res.status(status).json(result);
   });
 

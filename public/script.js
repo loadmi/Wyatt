@@ -126,6 +126,30 @@ class BotController {
         this._accountNoticeTimer = null;
         this._loginPollInterval = null;
         this._loginPollBusy = false;
+        this.chatListContainer = document.getElementById('chatList');
+        this.chatEmptyState = document.getElementById('chatEmptyState');
+        this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
+        this.chatSearchInput = document.getElementById('chatSearchInput');
+        this.chatStatusBanner = document.getElementById('chatStatus');
+        this.chatTitleEl = document.getElementById('chatActiveTitle');
+        this.chatMetaEl = document.getElementById('chatActiveMeta');
+        this.chatMessagesEl = document.getElementById('chatMessages');
+        this.chatComposer = document.getElementById('chatComposer');
+        this.chatMessageInput = document.getElementById('chatMessageInput');
+        this.chatSendBtn = document.getElementById('chatSendBtn');
+        this.chatListData = [];
+        this.filteredChats = [];
+        this.activeChatId = null;
+        this.chatPollInterval = null;
+        this.chatPollTick = 0;
+        this.chatLoading = false;
+        this.loadingChats = false;
+        this.chatSending = false;
+        this.chatAutoScroll = true;
+        this.chatSearchTerm = '';
+        this._chatStatusTimer = null;
+        this.chatRenderCache = new Map();
+        this.currentTab = 'overview';
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
@@ -150,6 +174,27 @@ class BotController {
         if (this.groupSendBtn) {
             this.groupSendBtn.addEventListener('click', () => this.sendGroupSentiment());
         }
+        if (this.chatRefreshBtn) {
+            this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
+        }
+        if (this.chatSearchInput) {
+            this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
+        }
+        if (this.chatComposer) {
+            this.chatComposer.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.submitChatMessage();
+            });
+        }
+        if (this.chatMessageInput) {
+            this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
+        }
+        if (this.chatMessagesEl) {
+            this.chatMessagesEl.addEventListener('scroll', () => this.handleChatScroll());
+        }
+
+        this.updateChatStatus('Select a chat to preview live messages.', 'info');
+        this.updateChatComposerState();
 
         // Check initial status
         this.checkStatus();
@@ -197,8 +242,17 @@ class BotController {
             this.stopBtn.disabled = true;
         }
         this.updateGroupControlsState();
+        this.updateChatComposerState();
         if (this.botIsRunning && !previouslyRunning) {
             this.loadGroups(false);
+            if (this.currentTab === 'chats') {
+                this.startChatPolling();
+            }
+        } else if (!this.botIsRunning && previouslyRunning) {
+            this.stopChatPolling();
+            if (this.chatStatusBanner) {
+                this.updateChatStatus('Bot stopped. Start it to continue chatting.', 'warning');
+            }
         }
     }
 
@@ -941,6 +995,481 @@ class BotController {
         }
     }
 
+    handleChatSearch() {
+        if (!this.chatSearchInput) return;
+        this.chatSearchTerm = this.chatSearchInput.value || '';
+        this.applyChatFilter();
+    }
+
+    handleChatScroll() {
+        if (!this.chatMessagesEl) return;
+        const { scrollTop, scrollHeight, clientHeight } = this.chatMessagesEl;
+        const nearBottom = scrollHeight - (scrollTop + clientHeight) < 80;
+        this.chatAutoScroll = nearBottom;
+    }
+
+    updateChatStatus(message, variant = 'info', options = {}) {
+        if (!this.chatStatusBanner) return;
+        if (this._chatStatusTimer) {
+            clearTimeout(this._chatStatusTimer);
+            this._chatStatusTimer = null;
+        }
+        if (!message) {
+            this.chatStatusBanner.textContent = '';
+            this.chatStatusBanner.setAttribute('hidden', '');
+            delete this.chatStatusBanner.dataset.variant;
+            return;
+        }
+        this.chatStatusBanner.textContent = message;
+        if (variant && variant !== 'info') {
+            this.chatStatusBanner.dataset.variant = variant;
+        } else {
+            delete this.chatStatusBanner.dataset.variant;
+        }
+        this.chatStatusBanner.removeAttribute('hidden');
+        const { autoClear = false } = options || {};
+        if (autoClear) {
+            this._chatStatusTimer = setTimeout(() => {
+                this.updateChatStatus('', 'info');
+            }, 4000);
+        }
+    }
+
+    updateActiveChatHeader(chat) {
+        if (!this.chatTitleEl || !this.chatMetaEl) {
+            return;
+        }
+        if (!chat) {
+            this.chatTitleEl.textContent = 'Pick a chat to preview';
+            this.chatMetaEl.textContent = 'Messages will appear here in real time.';
+            this.chatMetaEl.removeAttribute('title');
+            return;
+        }
+        const typeLabel = chat.type === 'private'
+            ? 'Direct chat'
+            : chat.type === 'group'
+                ? 'Group conversation'
+                : 'Channel';
+        this.chatTitleEl.textContent = chat.title || 'Conversation';
+        if (Number.isFinite(chat.lastTimestamp)) {
+            this.chatMetaEl.textContent = `${typeLabel} · Updated ${formatRelativeTime(chat.lastTimestamp)}`;
+            this.chatMetaEl.title = new Date(chat.lastTimestamp).toLocaleString();
+        } else {
+            this.chatMetaEl.textContent = `${typeLabel} · Live conversation`;
+            this.chatMetaEl.removeAttribute('title');
+        }
+    }
+
+    applyChatFilter() {
+        if (!Array.isArray(this.chatListData)) {
+            this.chatListData = [];
+        }
+        const term = (this.chatSearchTerm || '').toLowerCase().trim();
+        if (!term) {
+            this.filteredChats = this.chatListData.slice();
+        } else {
+            this.filteredChats = this.chatListData.filter(chat => {
+                const haystack = `${chat.title || ''} ${chat.lastMessage || ''}`.toLowerCase();
+                return haystack.includes(term);
+            });
+        }
+        this.renderChatList();
+    }
+
+    renderChatList() {
+        if (!this.chatListContainer) return;
+        this.chatListContainer.innerHTML = '';
+        const chats = Array.isArray(this.filteredChats) ? this.filteredChats : [];
+        const hasChats = chats.length > 0;
+        if (this.chatEmptyState) {
+            if (hasChats) {
+                this.chatEmptyState.setAttribute('hidden', '');
+            } else {
+                this.chatEmptyState.removeAttribute('hidden');
+            }
+        }
+
+        chats.forEach(chat => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'chat-list-item';
+            button.dataset.chatId = chat.id;
+            button.setAttribute('role', 'option');
+            button.title = chat.title || '';
+            button.addEventListener('click', () => this.setActiveChat(chat.id, { triggerFetch: true }));
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'chat-list-title';
+            titleEl.textContent = chat.title || 'Conversation';
+
+            const snippetEl = document.createElement('div');
+            snippetEl.className = 'chat-list-snippet';
+            snippetEl.textContent = chat.lastMessage || 'No messages yet';
+
+            const metaEl = document.createElement('div');
+            metaEl.className = 'chat-list-meta';
+
+            if (chat.type) {
+                const typeEl = document.createElement('span');
+                typeEl.className = 'chat-list-type';
+                typeEl.textContent = chat.type === 'private' ? 'Direct' : chat.type === 'group' ? 'Group' : 'Channel';
+                metaEl.appendChild(typeEl);
+            }
+
+            if (Number.isFinite(chat.lastTimestamp)) {
+                const timeEl = document.createElement('span');
+                timeEl.textContent = formatRelativeTime(chat.lastTimestamp);
+                timeEl.title = new Date(chat.lastTimestamp).toLocaleString();
+                metaEl.appendChild(timeEl);
+            }
+
+            if (Number.isFinite(chat.unreadCount) && chat.unreadCount > 0) {
+                const unreadEl = document.createElement('span');
+                unreadEl.className = 'chat-list-unread';
+                unreadEl.textContent = chat.unreadCount > 99 ? '99+' : String(chat.unreadCount);
+                metaEl.appendChild(unreadEl);
+            }
+
+            button.appendChild(titleEl);
+            button.appendChild(snippetEl);
+            if (metaEl.childNodes.length > 0) {
+                button.appendChild(metaEl);
+            }
+
+            this.chatListContainer.appendChild(button);
+        });
+
+        this.highlightActiveChat();
+    }
+
+    highlightActiveChat() {
+        if (!this.chatListContainer) return;
+        const buttons = Array.from(this.chatListContainer.querySelectorAll('.chat-list-item'));
+        buttons.forEach(button => {
+            const id = button.dataset.chatId;
+            const isActive = id === this.activeChatId;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', String(isActive));
+        });
+    }
+
+    setActiveChat(chatId, { triggerFetch = false } = {}) {
+        if (chatId === this.activeChatId && !triggerFetch) {
+            return;
+        }
+        this.activeChatId = chatId;
+        this.highlightActiveChat();
+
+        if (!chatId) {
+            this.updateActiveChatHeader(null);
+            this.renderChatMessages([]);
+            this.updateChatComposerState();
+            return;
+        }
+
+        const chat = this.chatListData.find(item => item.id === chatId) || null;
+        if (chat) {
+            this.updateActiveChatHeader(chat);
+        } else {
+            this.updateActiveChatHeader({ id: chatId, title: 'Conversation', type: 'private', lastTimestamp: Date.now() });
+        }
+
+        this.chatAutoScroll = true;
+        this.updateChatComposerState();
+        if (triggerFetch) {
+            this.refreshActiveChat({ force: true });
+        }
+    }
+
+    startChatPolling() {
+        if (!this.chatListContainer) return;
+        if (this.chatPollInterval) return;
+        if (!this.botIsRunning) {
+            this.loadChats({ silent: false, preserveActive: true });
+            return;
+        }
+        this.stopChatPolling();
+        this.loadChats({ silent: false, preserveActive: true });
+        this.refreshActiveChat({ force: true, silent: true });
+        this.chatPollTick = 0;
+        this.chatPollInterval = setInterval(() => {
+            if (!this.botIsRunning) {
+                this.stopChatPolling();
+                return;
+            }
+            this.chatPollTick += 1;
+            this.refreshActiveChat({ silent: true });
+            if (this.chatPollTick % 3 === 0) {
+                this.loadChats({ silent: true, preserveActive: true });
+            }
+        }, 5000);
+    }
+
+    stopChatPolling() {
+        if (this.chatPollInterval) {
+            clearInterval(this.chatPollInterval);
+            this.chatPollInterval = null;
+        }
+        this.chatPollTick = 0;
+    }
+
+    async loadChats({ silent = false, preserveActive = true, force = false } = {}) {
+        if (!this.chatListContainer) return;
+
+        if (!this.botIsRunning && !force) {
+            this.chatListData = [];
+            this.applyChatFilter();
+            if (!silent) {
+                this.updateChatStatus('Start the bot to load conversations.', 'warning');
+            }
+            return;
+        }
+
+        if (this.loadingChats && !force) {
+            return;
+        }
+        this.loadingChats = true;
+
+        if (!silent) {
+            this.updateChatStatus('Loading chats…', 'info');
+        }
+
+        try {
+            const response = await fetch('/api/chats');
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || `Failed to load chats (${response.status})`);
+            }
+            const chats = Array.isArray(data.chats) ? data.chats : [];
+            this.chatListData = chats;
+            this.applyChatFilter();
+
+            if (preserveActive && this.activeChatId && chats.some(chat => chat.id === this.activeChatId)) {
+                const activeChat = chats.find(chat => chat.id === this.activeChatId);
+                if (activeChat) {
+                    this.updateActiveChatHeader(activeChat);
+                }
+                // keep current selection
+            } else if (chats.length > 0) {
+                this.setActiveChat(chats[0].id, { triggerFetch: !this.activeChatId });
+            } else {
+                this.setActiveChat(null);
+            }
+
+            if (!silent) {
+                if (chats.length === 0) {
+                    this.updateChatStatus('No chats yet. Conversations will appear once messages arrive.', 'info');
+                } else {
+                    this.updateChatStatus(`Loaded ${chats.length} chat${chats.length === 1 ? '' : 's'}.`, 'success', { autoClear: true });
+                }
+            }
+        } catch (error) {
+            if (!silent) {
+                const message = error && error.message ? error.message : 'Failed to load chats.';
+                this.updateChatStatus(message, 'error');
+            } else {
+                console.warn('Failed to load chats:', error);
+            }
+        } finally {
+            this.loadingChats = false;
+            this.updateChatComposerState();
+        }
+    }
+
+    async refreshActiveChat({ force = false, silent = false } = {}) {
+        if (!this.activeChatId) {
+            if (!silent) {
+                this.updateChatStatus('Select a chat to preview live messages.', 'info');
+            }
+            this.renderChatMessages([]);
+            this.updateChatComposerState();
+            return;
+        }
+
+        if (this.chatLoading && !force) {
+            return;
+        }
+
+        this.chatLoading = true;
+        if (this.chatMessagesEl) {
+            this.chatMessagesEl.setAttribute('aria-busy', 'true');
+        }
+        if (!silent) {
+            this.updateChatStatus('Updating conversation…', 'info');
+        }
+
+        try {
+            const response = await fetch(`/api/chats/${encodeURIComponent(this.activeChatId)}`);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || `Failed to load chat (${response.status})`);
+            }
+
+            if (data.chat) {
+                const headerMeta = {
+                    id: data.chat.id,
+                    title: data.chat.title,
+                    type: data.chat.type,
+                    lastTimestamp: Array.isArray(data.messages) && data.messages.length > 0
+                        ? data.messages[data.messages.length - 1].timestamp
+                        : undefined,
+                };
+                this.updateActiveChatHeader(headerMeta);
+            }
+
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            const previous = this.chatRenderCache.get(this.activeChatId);
+            const latestId = messages.length > 0 ? messages[messages.length - 1].id : null;
+            const latestCount = messages.length;
+
+            if (!force && previous && previous.lastId === latestId && previous.count === latestCount) {
+                if (!silent) {
+                    this.updateChatStatus('Conversation is up to date.', 'success', { autoClear: true });
+                }
+                return;
+            }
+
+            this.chatRenderCache.set(this.activeChatId, {
+                lastId: latestId,
+                count: latestCount,
+                timestamp: Date.now(),
+            });
+
+            this.renderChatMessages(messages, { forceScroll: force });
+            if (!silent) {
+                if (messages.length === 0) {
+                    this.updateChatStatus('No messages in this chat yet.', 'info');
+                } else {
+                    this.updateChatStatus(`Loaded ${messages.length} message${messages.length === 1 ? '' : 's'}.`, 'success', { autoClear: true });
+                }
+            }
+        } catch (error) {
+            if (!silent) {
+                const message = error && error.message ? error.message : 'Failed to load chat history.';
+                this.updateChatStatus(message, 'error');
+            } else {
+                console.warn('Failed to refresh chat:', error);
+            }
+        } finally {
+            this.chatLoading = false;
+            if (this.chatMessagesEl) {
+                this.chatMessagesEl.setAttribute('aria-busy', 'false');
+            }
+            this.updateChatComposerState();
+        }
+    }
+
+    renderChatMessages(messages = [], { forceScroll = false } = {}) {
+        if (!this.chatMessagesEl) return;
+
+        const container = this.chatMessagesEl;
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const nearBottom = scrollHeight - (scrollTop + clientHeight) < 80;
+        const shouldStick = forceScroll || this.chatAutoScroll || nearBottom;
+
+        container.innerHTML = '';
+
+        if (!messages || messages.length === 0) {
+            container.classList.add('empty');
+            const hint = document.createElement('div');
+            hint.className = 'chat-empty-hint';
+            hint.textContent = 'No messages yet. Send a message to start the conversation.';
+            container.appendChild(hint);
+            this.chatAutoScroll = true;
+            return;
+        }
+
+        container.classList.remove('empty');
+
+        messages.forEach(message => {
+            const wrapper = document.createElement('div');
+            wrapper.className = `chat-message ${message.from === 'bot' ? 'outbound' : 'inbound'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble';
+            bubble.textContent = message.text || '';
+            wrapper.appendChild(bubble);
+
+            const meta = document.createElement('div');
+            meta.className = 'chat-message-meta';
+            const parts = [];
+            if (message.sender) {
+                parts.push(message.sender);
+            }
+            if (Number.isFinite(message.timestamp)) {
+                const date = new Date(message.timestamp);
+                parts.push(date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                meta.title = date.toLocaleString();
+            }
+            meta.textContent = parts.join(' • ');
+            wrapper.appendChild(meta);
+
+            container.appendChild(wrapper);
+        });
+
+        if (shouldStick) {
+            container.scrollTop = container.scrollHeight;
+            this.chatAutoScroll = true;
+        } else {
+            this.chatAutoScroll = false;
+        }
+    }
+
+    updateChatComposerState() {
+        if (!this.chatMessageInput || !this.chatSendBtn) return;
+        const hasChat = !!this.activeChatId;
+        const running = this.botIsRunning;
+        const message = this.chatMessageInput.value || '';
+        this.chatMessageInput.disabled = !hasChat || !running;
+        this.chatMessageInput.placeholder = running ? 'Write a reply…' : 'Start the bot to reply';
+        const hasText = message.trim().length > 0;
+        this.chatSendBtn.disabled = !hasChat || !running || this.chatSending || !hasText;
+    }
+
+    async submitChatMessage() {
+        if (!this.chatMessageInput || !this.chatSendBtn || !this.activeChatId) {
+            return;
+        }
+        const text = this.chatMessageInput.value.trim();
+        if (!text) {
+            return;
+        }
+        if (!this.botIsRunning) {
+            this.updateChatStatus('Start the bot before sending messages.', 'warning', { autoClear: true });
+            return;
+        }
+        if (this.chatSending) {
+            return;
+        }
+
+        this.chatSending = true;
+        this.updateChatComposerState();
+        this.updateChatStatus('Sending message…', 'info');
+
+        try {
+            const response = await fetch(`/api/chats/${encodeURIComponent(this.activeChatId)}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || `Failed to send message (${response.status})`);
+            }
+            this.chatMessageInput.value = '';
+            this.chatAutoScroll = true;
+            this.updateChatStatus(data?.message || 'Message sent.', 'success', { autoClear: true });
+            await this.refreshActiveChat({ force: true, silent: true });
+            this.loadChats({ silent: true, preserveActive: true });
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to send message.';
+            this.updateChatStatus(message, 'error');
+        } finally {
+            this.chatSending = false;
+            this.updateChatComposerState();
+        }
+    }
+
     setupMetricsDashboard() {
         this.initializeCharts();
         this.refreshMetrics();
@@ -1190,11 +1719,17 @@ class BotController {
     }
 
     handleTabActivated(tabId) {
+        this.currentTab = tabId;
         if (tabId === 'metrics') {
             this.refreshMetrics();
             window.requestAnimationFrame(() => this.resizeCharts());
         } else if (tabId === 'activity' && this.logDiv) {
             this.logDiv.scrollTop = this.logDiv.scrollHeight;
+        }
+        if (tabId === 'chats') {
+            this.startChatPolling();
+        } else {
+            this.stopChatPolling();
         }
     }
 
