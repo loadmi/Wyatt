@@ -214,7 +214,45 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
     '',
     'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
   ].join('\n');
-console.log(userPrompt)
+  const reply = await requestLLMCompletion(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    { fallback }
+  );
+
+  return reply && reply.trim().length > 0 ? reply.trim() : fallback;
+}
+
+export async function generatePrivateBlendMessage(samples: SentimentSample[]): Promise<string> {
+  const fallback = 'Sounds good—chat soon!';
+  if (!samples || samples.length === 0) {
+    return fallback;
+  }
+
+  const normalized = samples.map((sample) => {
+    const speaker = (sample.speaker || 'Contact').trim();
+    const text = (sample.text || '').trim();
+    const ts = sample.timestamp ? new Date(sample.timestamp).toISOString() : '';
+    return ts ? `[${ts}] ${speaker}: ${text}` : `${speaker}: ${text}`;
+  });
+
+  const transcript = normalized.join('\n');
+  const systemPrompt = [
+    'You craft short replies for a one-on-one Telegram conversation.',
+    'Read the recent exchange between You and the other person and respond with a neutral, generic line that feels natural in context.',
+    'Keep it calm and non-committal, avoid questions unless the last message requires a brief acknowledgement, and do not promise specific actions.',
+    'One concise sentence (max ~200 characters). No links, tags, or mentions. Output only the final reply.',
+  ].join(' ');
+
+  const userPrompt = [
+    'Recent private conversation (oldest first):',
+    transcript,
+    '',
+    'Write a single neutral reply as "You" that acknowledges the latest context without giving away sensitive information. Output only the reply.',
+  ].join('\n');
+
   const reply = await requestLLMCompletion(
     [
       { role: 'system', content: systemPrompt },

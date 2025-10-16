@@ -108,11 +108,6 @@ class BotController {
         this.numberFormatter = new Intl.NumberFormat();
         this.metricsInterval = null;
         this.lastMetricsError = null;
-        this.groupSelect = document.getElementById('groupSelect');
-        this.groupRefreshBtn = document.getElementById('groupRefreshBtn');
-        this.groupSendBtn = document.getElementById('groupSendBtn');
-        this.loadingGroups = false;
-        this.sendingGroupMessage = false;
         this.botIsRunning = false;
         this.accountList = document.getElementById('accountList');
         this.accountForm = document.getElementById('accountForm');
@@ -153,6 +148,7 @@ class BotController {
         this.chatComposer = document.getElementById('chatComposer');
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
+        this.chatBlendBtn = document.getElementById('chatBlendBtn');
         this.chatListData = [];
         this.filteredChats = [];
         this.activeChatId = null;
@@ -161,6 +157,7 @@ class BotController {
         this.chatLoading = false;
         this.loadingChats = false;
         this.chatSending = false;
+        this.chatBlending = false;
         this.chatAutoScroll = true;
         this.chatSearchTerm = '';
         this._chatStatusTimer = null;
@@ -181,15 +178,6 @@ class BotController {
         if (this.accountCancelBtn) {
             this.accountCancelBtn.addEventListener('click', () => this.resetAccountForm());
         }
-        if (this.groupSelect) {
-            this.groupSelect.addEventListener('change', () => this.updateGroupControlsState());
-        }
-        if (this.groupRefreshBtn) {
-            this.groupRefreshBtn.addEventListener('click', () => this.loadGroups());
-        }
-        if (this.groupSendBtn) {
-            this.groupSendBtn.addEventListener('click', () => this.sendGroupSentiment());
-        }
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
         }
@@ -201,6 +189,9 @@ class BotController {
                 event.preventDefault();
                 this.submitChatMessage();
             });
+        }
+        if (this.chatBlendBtn) {
+            this.chatBlendBtn.addEventListener('click', () => this.sendBlendMessageForActiveChat());
         }
         if (this.chatMessageInput) {
             this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
@@ -231,9 +222,6 @@ class BotController {
 
         // Load Telegram accounts
         this.loadAccounts();
-
-        // Attempt to load group list (may warn if bot is stopped)
-        this.loadGroups(false);
 
         // Check status every 5 seconds
         setInterval(() => this.checkStatus(), 5000);
@@ -274,10 +262,8 @@ class BotController {
             this.startBtn.disabled = !this.hasActiveAccount;
             this.stopBtn.disabled = true;
         }
-        this.updateGroupControlsState();
         this.updateChatComposerState();
         if (this.botIsRunning && !previouslyRunning) {
-            this.loadGroups(false);
             if (this.currentTab === 'chats') {
                 this.startChatPolling();
             }
@@ -819,87 +805,6 @@ class BotController {
         }
     }
 
-    async loadGroups(logOnSuccess = true) {
-        if (!this.groupSelect) return;
-
-        if (!this.botIsRunning) {
-            this.groupSelect.innerHTML = '';
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'Start the bot to load groups';
-            this.groupSelect.appendChild(option);
-            this.updateGroupControlsState();
-            return;
-        }
-
-        const previousValue = this.groupSelect.value;
-        this.loadingGroups = true;
-        this.updateGroupControlsState();
-        this.groupSelect.innerHTML = '';
-        const loadingOption = document.createElement('option');
-        loadingOption.value = '';
-        loadingOption.textContent = 'Loading groups...';
-        this.groupSelect.appendChild(loadingOption);
-
-        try {
-            const response = await fetch('/api/telegram/groups');
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                const message = data?.message || 'Unable to load groups';
-                this.groupSelect.innerHTML = '';
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = message;
-                this.groupSelect.appendChild(option);
-                this.log('❌ ' + message);
-                return;
-            }
-
-            if (!Array.isArray(data.groups) || data.groups.length === 0) {
-                this.groupSelect.innerHTML = '';
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = 'No accessible groups';
-                this.groupSelect.appendChild(option);
-                if (logOnSuccess) {
-                    this.log('ℹ️ No group chats available.');
-                }
-                return;
-            }
-
-            this.groupSelect.innerHTML = '';
-            data.groups.forEach(group => {
-                const option = document.createElement('option');
-                option.value = group.id;
-                option.textContent = group.title;
-                this.groupSelect.appendChild(option);
-            });
-
-            if (previousValue && data.groups.some(g => g.id === previousValue)) {
-                this.groupSelect.value = previousValue;
-            }
-
-            if (!this.groupSelect.value && data.groups.length > 0) {
-                this.groupSelect.value = data.groups[0].id;
-            }
-
-            if (logOnSuccess) {
-                this.log(`Group list refreshed (${data.groups.length} found)`);
-            }
-        } catch (error) {
-            this.groupSelect.innerHTML = '';
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'Failed to load groups';
-            this.groupSelect.appendChild(option);
-            this.log('❌ Error loading groups: ' + error.message);
-        } finally {
-            this.loadingGroups = false;
-            this.updateGroupControlsState();
-        }
-    }
-
     toggleModelVisibility() {
         const p = this.providerSelect.value;
         if (p === 'openrouter') {
@@ -978,59 +883,6 @@ class BotController {
             }
         } catch (error) {
             this.log('❌ Error changing personality: ' + error.message);
-        }
-    }
-
-    updateGroupControlsState() {
-        const busy = this.loadingGroups || this.sendingGroupMessage;
-        if (this.groupSelect) {
-            const disableSelect = !this.botIsRunning || this.loadingGroups;
-            this.groupSelect.disabled = disableSelect;
-        }
-        if (this.groupRefreshBtn) {
-            this.groupRefreshBtn.disabled = !this.botIsRunning || busy;
-        }
-        if (this.groupSendBtn) {
-            const hasChoice = !!(this.groupSelect && this.groupSelect.value);
-            this.groupSendBtn.disabled = !this.botIsRunning || !hasChoice || busy;
-        }
-    }
-
-    async sendGroupSentiment() {
-        if (!this.groupSelect || !this.groupSendBtn) return;
-        const groupId = this.groupSelect.value;
-        if (!groupId) {
-            this.log('Select a group first.');
-            return;
-        }
-
-        const selectedOption = this.groupSelect.options[this.groupSelect.selectedIndex];
-        const groupName = selectedOption ? selectedOption.textContent : 'group';
-        this.sendingGroupMessage = true;
-        this.updateGroupControlsState();
-        this.log(`Crafting sentiment-matched message for "${groupName}"...`);
-
-        try {
-            const response = await fetch(`/api/telegram/groups/${encodeURIComponent(groupId)}/sentiment`, {
-                method: 'POST'
-            });
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                let preview = '';
-                if (typeof data.preview === 'string') {
-                    const trimmed = data.preview.length > 160 ? data.preview.slice(0, 157) + '…' : data.preview;
-                    preview = ` Preview: ${trimmed}`;
-                }
-                this.log(`✅ ${data.message}${preview}`);
-            } else {
-                this.log('❌ ' + (data.message || 'Failed to send group message'));
-            }
-        } catch (error) {
-            this.log('❌ Error sending group message: ' + error.message);
-        } finally {
-            this.sendingGroupMessage = false;
-            this.updateGroupControlsState();
         }
     }
 
@@ -1469,7 +1321,58 @@ class BotController {
         this.chatMessageInput.disabled = !hasChat || !running;
         this.chatMessageInput.placeholder = running ? 'Write a reply…' : 'Start the bot to reply';
         const hasText = message.trim().length > 0;
-        this.chatSendBtn.disabled = !hasChat || !running || this.chatSending || !hasText;
+        const sending = this.chatSending;
+        const blending = this.chatBlending;
+        this.chatSendBtn.disabled = !hasChat || !running || sending || blending || !hasText;
+        if (this.chatBlendBtn) {
+            const canBlend = hasChat && running && !blending && !sending && !this.chatLoading;
+            this.chatBlendBtn.disabled = !canBlend;
+        }
+    }
+
+    async sendBlendMessageForActiveChat() {
+        if (!this.activeChatId || !this.chatBlendBtn) {
+            return;
+        }
+        if (!this.botIsRunning) {
+            this.updateChatStatus('Start the bot before sending blend messages.', 'warning', { autoClear: true });
+            return;
+        }
+        if (this.chatBlending || this.chatSending) {
+            return;
+        }
+
+        this.chatBlending = true;
+        this.updateChatComposerState();
+        this.updateChatStatus('Crafting blend message…', 'info');
+
+        try {
+            const response = await fetch(`/api/chats/${encodeURIComponent(this.activeChatId)}/blend`, {
+                method: 'POST'
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || `Failed to craft blend message (${response.status})`);
+            }
+            let statusMessage = data?.message || 'Blend message sent.';
+            if (typeof data.preview === 'string') {
+                const trimmed = data.preview.trim();
+                if (trimmed) {
+                    const preview = trimmed.length > 160 ? trimmed.slice(0, 157) + '…' : trimmed;
+                    statusMessage += ` Preview: ${preview}`;
+                }
+            }
+            this.chatAutoScroll = true;
+            this.updateChatStatus(statusMessage, 'success', { autoClear: true });
+            await this.refreshActiveChat({ force: true, silent: true });
+            this.loadChats({ silent: true, preserveActive: true });
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to send blend message.';
+            this.updateChatStatus(message, 'error');
+        } finally {
+            this.chatBlending = false;
+            this.updateChatComposerState();
+        }
     }
 
     async submitChatMessage() {
