@@ -17,17 +17,38 @@ let isRunning = false;
 let isStopping = false;
 let messageEvent: NewMessage | undefined;
 
-type GroupCacheEntry = {
-  title: string;
-  inputPeer: any;
-};
-
 export type TelegramGroup = {
   id: string;
   title: string;
 };
 
-const groupCache = new Map<string, GroupCacheEntry>();
+type DialogCacheEntry = {
+  title: string;
+  inputPeer: any;
+  isGroup: boolean;
+  lastMessageAt?: number;
+  unreadCount?: number;
+};
+
+export type TelegramChatSummary = {
+  id: string;
+  title: string;
+  isGroup: boolean;
+  unreadCount: number;
+  lastMessageAt: number | null;
+  lastMessagePreview: string | null;
+};
+
+export type TelegramChatMessage = {
+  id: string;
+  text: string;
+  timestamp: number | null;
+  isOutbound: boolean;
+  senderId: string | null;
+  senderName: string;
+};
+
+const dialogCache = new Map<string, DialogCacheEntry>();
 
 // Define a consistent return type for control functions
 interface ControlResponse {
@@ -325,54 +346,238 @@ function toDialogKey(raw: any): string | null {
   return null;
 }
 
-async function resolveGroupInputPeer(groupId: string): Promise<GroupCacheEntry | undefined> {
-  if (groupCache.has(groupId)) {
-    return groupCache.get(groupId);
-  }
-  const groups = await listTelegramGroups();
-  return groups.find((g) => g.id === groupId) ? groupCache.get(groupId) : undefined;
-}
-
-export async function listTelegramGroups(): Promise<TelegramGroup[]> {
+async function refreshDialogSummaries(): Promise<TelegramChatSummary[]> {
   ensureClientReady();
 
   const dialogs = await client.getDialogs({ limit: 200 });
-  const nextCache = new Map<string, GroupCacheEntry>();
-  const groups: TelegramGroup[] = [];
+  const nextCache = new Map<string, DialogCacheEntry>();
+  const summaries: TelegramChatSummary[] = [];
 
   for (const dialog of dialogs) {
-    const isGroupLike = (dialog as any)?.isGroup === true || (dialog as any)?.isChannel === true;
-    if (!isGroupLike) continue;
-
     const entity: any = (dialog as any).entity;
     const key = toDialogKey((dialog as any).id ?? entity?.id ?? entity?.channelId ?? entity?.chatId);
     if (!key) continue;
-
-    const title =
-      (entity?.title && String(entity.title)) ||
-      (entity?.firstName && String(entity.firstName)) ||
-      (entity?.username && String(entity.username)) ||
-      `Group ${key}`;
 
     let inputPeer: any;
     try {
       inputPeer = await client.getInputEntity(entity);
     } catch (error) {
-      console.warn(`Failed to resolve input entity for group ${title}:`, (error as any)?.message || error);
+      console.warn(
+        `Failed to resolve input entity for dialog ${entity?.title || entity?.username || key}:`,
+        (error as any)?.message || error,
+      );
       continue;
     }
 
-    nextCache.set(key, { title, inputPeer });
-    groups.push({ id: key, title });
+    const isGroupLike = (dialog as any)?.isGroup === true || (dialog as any)?.isChannel === true;
+    const title =
+      (entity?.title && String(entity.title)) ||
+      (entity?.firstName && String(entity.firstName)) ||
+      (entity?.username && String(entity.username)) ||
+      (isGroupLike ? `Group ${key}` : `Chat ${key}`);
+
+    const rawMessage: any = (dialog as any).message;
+    const previewRaw = typeof rawMessage?.message === "string" ? rawMessage.message.trim() : "";
+    const preview = previewRaw ? previewRaw.replace(/\s+/g, " ") : "";
+    const timestamp = (() => {
+      const date: any = rawMessage?.date;
+      if (date instanceof Date) return date.getTime();
+      if (typeof date === "number") return date * 1000;
+      if (date && typeof date.valueOf === "function") {
+        const value = Number(date.valueOf());
+        if (Number.isFinite(value)) return value;
+      }
+      return null;
+    })();
+
+    const unreadRaw = Number((dialog as any)?.unreadCount ?? (dialog as any)?.unreadMentionsCount ?? 0);
+    const unreadCount = Number.isFinite(unreadRaw) && unreadRaw > 0 ? unreadRaw : 0;
+
+    summaries.push({
+      id: key,
+      title,
+      isGroup: !!isGroupLike,
+      unreadCount,
+      lastMessageAt: timestamp,
+      lastMessagePreview: preview ? preview.slice(0, 160) : null,
+    });
+
+    nextCache.set(key, {
+      title,
+      inputPeer,
+      isGroup: !!isGroupLike,
+      lastMessageAt: timestamp ?? undefined,
+      unreadCount: unreadCount || undefined,
+    });
   }
 
-  groups.sort((a, b) => a.title.localeCompare(b.title));
-  groupCache.clear();
+  summaries.sort((a, b) => {
+    const aTime = a.lastMessageAt ?? 0;
+    const bTime = b.lastMessageAt ?? 0;
+    if (aTime === bTime) {
+      return a.title.localeCompare(b.title);
+    }
+    return bTime - aTime;
+  });
+
+  dialogCache.clear();
   for (const [key, value] of nextCache.entries()) {
-    groupCache.set(key, value);
+    dialogCache.set(key, value);
   }
 
-  return groups;
+  return summaries;
+}
+
+async function resolveChatEntry(chatId: string): Promise<DialogCacheEntry | undefined> {
+  if (dialogCache.has(chatId)) {
+    return dialogCache.get(chatId);
+  }
+  await refreshDialogSummaries();
+  return dialogCache.get(chatId);
+}
+
+async function resolveGroupInputPeer(groupId: string): Promise<DialogCacheEntry | undefined> {
+  const entry = await resolveChatEntry(groupId);
+  if (entry?.isGroup) {
+    return entry;
+  }
+  return undefined;
+}
+
+export async function listTelegramChats(): Promise<TelegramChatSummary[]> {
+  return refreshDialogSummaries();
+}
+
+export async function listTelegramGroups(): Promise<TelegramGroup[]> {
+  const chats = await listTelegramChats();
+  return chats
+    .filter((chat) => chat.isGroup)
+    .map((chat) => ({ id: chat.id, title: chat.title }));
+}
+
+export async function getChatMessages(chatId: string, limit = 60): Promise<TelegramChatMessage[]> {
+  ensureClientReady();
+  const entry = await resolveChatEntry(chatId);
+  if (!entry) {
+    throw new Error("Chat not found or not accessible.");
+  }
+
+  const messages: TelegramChatMessage[] = [];
+  try {
+    const iterator = client.iterMessages(entry.inputPeer, { limit });
+    for await (const message of iterator) {
+      if (!message) continue;
+
+      let text = typeof message.message === "string" ? message.message.trim() : "";
+      if (!text) {
+        if ((message as any)?.media) {
+          text = "[Unsupported media message]";
+        } else {
+          continue;
+        }
+      }
+
+      const timestamp = (() => {
+        const date: any = (message as any).date;
+        if (date instanceof Date) return date.getTime();
+        if (typeof date === "number") return date * 1000;
+        if (date && typeof date.valueOf === "function") {
+          const value = Number(date.valueOf());
+          if (Number.isFinite(value)) return value;
+        }
+        return null;
+      })();
+
+      const senderIdRaw = (message as any)?.senderId;
+      const senderId = (() => {
+        try {
+          if (typeof senderIdRaw === "bigint" || typeof senderIdRaw === "number" || typeof senderIdRaw === "string") {
+            return String(senderIdRaw);
+          }
+          if (senderIdRaw && typeof senderIdRaw.toString === "function") {
+            const value = senderIdRaw.toString();
+            if (value && value !== "[object Object]") return value;
+          }
+        } catch { }
+        return null;
+      })();
+
+      const senderName = (() => {
+        if ((message as any).out === true) {
+          return "You";
+        }
+        try {
+          const sender: any = (message as any).sender;
+          if (sender?.title) return String(sender.title);
+          if (sender?.firstName || sender?.lastName) {
+            return [sender.firstName, sender.lastName].filter(Boolean).join(" ").trim() || "Participant";
+          }
+          if (sender?.username) return String(sender.username);
+        } catch { }
+        if (senderId) {
+          return `User ${senderId}`;
+        }
+        return "Participant";
+      })();
+
+      const id = (() => {
+        const rawId: any = (message as any).id;
+        if (typeof rawId === "number" || typeof rawId === "string" || typeof rawId === "bigint") {
+          return String(rawId);
+        }
+        try {
+          if (rawId && typeof rawId.toString === "function") {
+            const asString = rawId.toString();
+            if (asString && asString !== "[object Object]") return asString;
+          }
+        } catch { }
+        if (timestamp) {
+          return `${chatId}-${timestamp}`;
+        }
+        return `${chatId}-${Date.now()}`;
+      })();
+
+      messages.push({
+        id,
+        text,
+        timestamp,
+        isOutbound: (message as any).out === true,
+        senderId,
+        senderName,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to iterate chat messages:", (error as any)?.message || error);
+  }
+
+  messages.reverse();
+  return messages;
+}
+
+export async function sendMessageToChat(chatId: string, message: string): Promise<ControlResponse> {
+  try {
+    ensureClientReady();
+  } catch (error) {
+    return { success: false, message: (error as any)?.message || "Telegram client is not running." };
+  }
+
+  const text = (message || "").trim();
+  if (!text) {
+    return { success: false, message: "Message text is required." };
+  }
+
+  const entry = await resolveChatEntry(chatId);
+  if (!entry) {
+    return { success: false, message: "Chat not found or not accessible." };
+  }
+
+  try {
+    await client.sendMessage(entry.inputPeer, { message: text });
+    return { success: true, message: "Message sent." };
+  } catch (error) {
+    console.error("Failed to send chat message:", error);
+    return { success: false, message: "Failed to send message." };
+  }
 }
 
 async function collectGroupSamples(inputPeer: any): Promise<SentimentSample[]> {

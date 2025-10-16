@@ -7,7 +7,10 @@ import {
   getStatus,
   startBotNonInteractive,
   listTelegramGroups,
+  listTelegramChats,
   sendSentimentToGroup,
+  getChatMessages,
+  sendMessageToChat,
 } from "../telegram/client";
 import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
@@ -164,6 +167,53 @@ export function startWebServer(): void {
       const status = message.includes("not running") ? 409 : 500;
       res.status(status).json({ success: false, message });
     }
+  });
+
+  app.get("/api/telegram/chats", async (_req: Request, res: Response) => {
+    try {
+      const chats = await listTelegramChats();
+      res.json({ success: true, chats });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat list.";
+      const status = message.toLowerCase().includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.get("/api/telegram/chats/:chatId/messages", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    const limitParam = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const limit = Number(limitParam ?? 60);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 200 ? Math.trunc(limit) : 60;
+
+    try {
+      const messages = await getChatMessages(chatId, safeLimit);
+      res.json({ success: true, messages });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat messages.";
+      const status = message.toLowerCase().includes("not running") ? 409 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/telegram/chats/:chatId/messages", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { message } = req.body || {};
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    if (typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Message text is required." });
+    }
+
+    const result = await sendMessageToChat(chatId, message);
+    const status = result.success ? 201 : result.message.toLowerCase().includes("not running") ? 409 : 500;
+    res.status(status).json(result);
   });
 
   app.post("/api/telegram/groups/:groupId/sentiment", async (req: Request, res: Response) => {
