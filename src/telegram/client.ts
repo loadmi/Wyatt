@@ -27,6 +27,16 @@ export type TelegramGroup = {
   title: string;
 };
 
+export type TelegramChatMessage = {
+  id: string;
+  sender: string;
+  text: string;
+  timestamp?: number;
+  isOutgoing: boolean;
+  isService?: boolean;
+  replyToId?: string;
+};
+
 const groupCache = new Map<string, GroupCacheEntry>();
 
 // Define a consistent return type for control functions
@@ -375,6 +385,99 @@ export async function listTelegramGroups(): Promise<TelegramGroup[]> {
   return groups;
 }
 
+function describeClassName(raw: any, fallback: string): string {
+  if (!raw) return fallback;
+  const className = String(raw.className || raw._ || raw.constructor?.name || "");
+  if (!className) return fallback;
+  return className
+    .replace(/^Message(Action|Media)/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    || fallback;
+}
+
+function toMessageId(raw: any): string | null {
+  try {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === "string") return raw;
+    if (typeof raw === "number" || typeof raw === "bigint") return String(raw);
+    if (raw?.value !== undefined) return toMessageId(raw.value);
+    if (raw?.id !== undefined) return toMessageId(raw.id);
+    if (typeof raw.toString === "function") {
+      const str = raw.toString();
+      return str && str !== "[object Object]" ? str : null;
+    }
+  } catch { }
+  return null;
+}
+
+function extractSenderName(message: any): string {
+  try {
+    const sender: any = message?.sender;
+    if (sender?.title) return String(sender.title);
+    if (sender?.firstName || sender?.lastName) {
+      return [sender.firstName, sender.lastName].filter(Boolean).join(" ").trim() || "Participant";
+    }
+    if (sender?.username) return String(sender.username);
+  } catch { }
+  const senderId = message?.senderId;
+  if (typeof senderId === "bigint" || typeof senderId === "number" || typeof senderId === "string") {
+    return `User ${senderId}`;
+  }
+  return "Participant";
+}
+
+function extractTimestamp(message: any): number | undefined {
+  const date: any = message?.date;
+  if (date instanceof Date) return date.getTime();
+  if (typeof date === "number") return date * 1000;
+  if (date && typeof date.valueOf === "function") {
+    const v = Number(date.valueOf());
+    if (Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+function extractMessageText(message: any): { text: string; isService: boolean } | null {
+  const rawText = typeof message?.message === "string" ? message.message.trim() : "";
+  if (rawText) {
+    return { text: rawText, isService: false };
+  }
+
+  if (message?.action) {
+    const actionLabel = describeClassName(message.action, "Service action");
+    return { text: `[${actionLabel}]`, isService: true };
+  }
+
+  if (message?.media) {
+    const mediaLabel = describeClassName(message.media, "Shared media");
+    return { text: `[${mediaLabel}]`, isService: false };
+  }
+
+  return null;
+}
+
+function mapToChatMessage(message: any): TelegramChatMessage | null {
+  const messageId = toMessageId(message?.id);
+  if (!messageId) return null;
+
+  const payload = extractMessageText(message);
+  if (!payload) return null;
+
+  const replyToId = toMessageId(message?.replyTo?.replyToMsgId ?? message?.replyToMsgId);
+
+  return {
+    id: messageId,
+    sender: extractSenderName(message),
+    text: payload.text,
+    timestamp: extractTimestamp(message),
+    isOutgoing: message?.out === true,
+    isService: payload.isService,
+    replyToId: replyToId || undefined,
+  };
+}
+
 async function collectGroupSamples(inputPeer: any): Promise<SentimentSample[]> {
   const MAX_MESSAGES = 60;
   const MAX_CHARACTERS = 6000;
@@ -461,6 +564,66 @@ export async function sendSentimentToGroup(groupId: string): Promise<{ success: 
     return { success: true, message: `Sent message to ${entry.title}.`, preview: crafted };
   } catch (error) {
     console.error("Failed to send sentiment message:", error);
+    return { success: false, message: "Failed to send message to group." };
+  }
+}
+
+export async function getGroupChatHistory(
+  groupId: string,
+  limit = 120,
+): Promise<{ success: true; title: string; messages: TelegramChatMessage[] }> {
+  ensureClientReady();
+
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 10), 250) : 120;
+  const entry = await resolveGroupInputPeer(groupId);
+  if (!entry) {
+    throw new Error("Group not found or not accessible.");
+  }
+
+  const messages: TelegramChatMessage[] = [];
+  try {
+    const iterator = client.iterMessages(entry.inputPeer, { limit: safeLimit });
+    for await (const message of iterator) {
+      const mapped = mapToChatMessage(message);
+      if (mapped) {
+        messages.push(mapped);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to load chat history:", (error as any)?.message || error);
+  }
+
+  messages.reverse();
+
+  return { success: true, title: entry.title, messages };
+}
+
+export async function sendMessageToGroup(
+  groupId: string,
+  text: string,
+): Promise<ControlResponse> {
+  try {
+    ensureClientReady();
+  } catch (error) {
+    const message = (error as any)?.message || "Telegram client is not running";
+    return { success: false, message };
+  }
+
+  const trimmed = (text || "").trim();
+  if (!trimmed) {
+    return { success: false, message: "Message text is required." };
+  }
+
+  const entry = await resolveGroupInputPeer(groupId);
+  if (!entry) {
+    return { success: false, message: "Group not found or not accessible." };
+  }
+
+  try {
+    await client.sendMessage(entry.inputPeer, { message: trimmed });
+    return { success: true, message: `Sent message to ${entry.title}.` };
+  } catch (error) {
+    console.error("Failed to send manual message:", error);
     return { success: false, message: "Failed to send message to group." };
   }
 }

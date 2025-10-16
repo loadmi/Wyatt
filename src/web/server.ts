@@ -8,6 +8,8 @@ import {
   startBotNonInteractive,
   listTelegramGroups,
   sendSentimentToGroup,
+  getGroupChatHistory,
+  sendMessageToGroup,
 } from "../telegram/client";
 import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
@@ -164,6 +166,44 @@ export function startWebServer(): void {
       const status = message.includes("not running") ? 409 : 500;
       res.status(status).json({ success: false, message });
     }
+  });
+
+  app.get("/api/telegram/groups/:groupId/messages", async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    const rawLimit = req.query.limit;
+    const parsedLimit = typeof rawLimit === "string" ? Number.parseInt(rawLimit, 10) : undefined;
+
+    if (!groupId) {
+      return res.status(400).json({ success: false, message: "Group ID is required." });
+    }
+
+    try {
+      const history = await getGroupChatHistory(groupId, parsedLimit);
+      res.json(history);
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to load chat history.";
+      const status = message.includes("not running") ? 409 : 404;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/telegram/groups/:groupId/messages", async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    const { text } = req.body || {};
+
+    if (!groupId) {
+      return res.status(400).json({ success: false, message: "Group ID is required." });
+    }
+
+    const result = await sendMessageToGroup(groupId, typeof text === "string" ? text : "");
+    const status = result.success
+      ? 201
+      : result.message.includes("not running")
+        ? 409
+        : result.message.includes("not accessible") || result.message.includes("required")
+          ? 400
+          : 500;
+    res.status(status).json(result);
   });
 
   app.post("/api/telegram/groups/:groupId/sentiment", async (req: Request, res: Response) => {

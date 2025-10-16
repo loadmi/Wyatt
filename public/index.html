@@ -33,6 +33,13 @@
             --tab-bg: rgba(255, 255, 255, 0.04);
             --tab-active-bg: rgba(37, 99, 235, 0.18);
             --tab-border: rgba(148, 163, 184, 0.24);
+            --chat-surface: rgba(15, 23, 42, 0.65);
+            --chat-border: rgba(148, 163, 184, 0.24);
+            --chat-incoming-bg: rgba(96, 165, 250, 0.16);
+            --chat-outgoing-bg: rgba(34, 197, 94, 0.18);
+            --chat-outgoing-text: #ecfdf5;
+            --chat-meta: rgba(226, 232, 240, 0.7);
+            --chat-status: rgba(226, 232, 240, 0.7);
         }
 
         /* Light theme overrides */
@@ -62,6 +69,13 @@
             --tab-bg: rgba(15, 23, 42, 0.06);
             --tab-active-bg: rgba(37, 99, 235, 0.14);
             --tab-border: rgba(148, 163, 184, 0.4);
+            --chat-surface: rgba(148, 163, 184, 0.1);
+            --chat-border: rgba(148, 163, 184, 0.35);
+            --chat-incoming-bg: rgba(59, 130, 246, 0.18);
+            --chat-outgoing-bg: rgba(22, 163, 74, 0.16);
+            --chat-outgoing-text: #14532d;
+            --chat-meta: rgba(71, 85, 105, 0.75);
+            --chat-status: rgba(71, 85, 105, 0.75);
         }
 
         * {
@@ -732,6 +746,216 @@
             color: var(--text);
         }
 
+        .chat-panel {
+            display: grid;
+            gap: 18px;
+        }
+
+        .chat-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 18px;
+        }
+
+        .chat-header .panel-title {
+            margin-bottom: 6px;
+        }
+
+        .chat-subtitle {
+            margin: 0;
+            color: var(--subtle);
+            font-size: 0.92rem;
+        }
+
+        .chat-selector {
+            display: grid;
+            gap: 6px;
+            min-width: 240px;
+        }
+
+        .chat-selector-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chat-refresh-btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--chat-border);
+            background: transparent;
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .chat-refresh-btn:hover:enabled {
+            background: rgba(37, 99, 235, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .chat-transcript {
+            background: var(--chat-surface);
+            border: 1px solid var(--chat-border);
+            border-radius: 16px;
+            padding: 18px;
+            min-height: 320px;
+            max-height: 520px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+        }
+
+        .theme-light .chat-transcript {
+            box-shadow: 0 12px 28px rgba(100, 116, 139, 0.2);
+        }
+
+        .chat-transcript::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-transcript::-webkit-scrollbar-thumb {
+            background-color: rgba(148, 163, 184, 0.45);
+            border-radius: 999px;
+        }
+
+        .chat-empty {
+            color: var(--chat-status);
+            text-align: center;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .chat-message {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-width: min(72%, 520px);
+        }
+
+        .chat-message.incoming {
+            align-self: flex-start;
+        }
+
+        .chat-message.outgoing {
+            align-self: flex-end;
+            text-align: right;
+        }
+
+        .chat-meta {
+            font-size: 0.75rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--chat-meta);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .chat-reply {
+            font-size: 0.78rem;
+            color: var(--chat-meta);
+        }
+
+        .chat-bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            line-height: 1.45;
+            color: var(--text);
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.incoming .chat-bubble {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(99, 102, 241, 0.22));
+        }
+
+        .chat-message.outgoing .chat-bubble {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.22), rgba(16, 185, 129, 0.24));
+            color: var(--chat-outgoing-text);
+            border-color: rgba(16, 185, 129, 0.32);
+        }
+
+        .chat-message.is-service .chat-bubble {
+            font-style: italic;
+            opacity: 0.85;
+        }
+
+        .chat-status {
+            font-size: 0.85rem;
+            color: var(--chat-status);
+            text-align: right;
+        }
+
+        .chat-composer {
+            background: var(--container-bg);
+            border: 1px solid var(--chat-border);
+            border-radius: 14px;
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .chat-input {
+            min-height: 90px;
+            background: var(--chat-surface);
+            border: 1px solid var(--chat-border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .chat-input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .chat-composer-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-hint {
+            font-size: 0.8rem;
+            color: var(--chat-meta);
+        }
+
+        .chat-send-btn {
+            padding: 10px 20px;
+            border-radius: 999px;
+            border: none;
+            font-weight: 600;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #ffffff;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .chat-send-btn:hover:enabled {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+        }
+
+        .chat-send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
         @media (max-width: 720px) {
             body {
                 padding: 18px 12px 36px;
@@ -790,6 +1014,8 @@
                 aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">Configuration</button>
             <button id="tab-outreach" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-outreach" tabindex="-1" data-tab="outreach">Outreach</button>
+            <button id="tab-chats" class="tab-button" type="button" role="tab" aria-selected="false"
+                aria-controls="panel-chats" tabindex="-1" data-tab="chats">Chats</button>
             <button id="tab-metrics" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-metrics" tabindex="-1" data-tab="metrics">Metrics</button>
             <button id="tab-activity" class="tab-button" type="button" role="tab" aria-selected="false"
@@ -917,6 +1143,42 @@
                             <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
                             <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="panel-chats" class="tab-panel" role="tabpanel" aria-labelledby="tab-chats" hidden>
+                <div class="panel-card">
+                    <div class="chat-panel" aria-label="Live Telegram chats">
+                        <div class="chat-header">
+                            <div>
+                                <h2 class="panel-title">Live Chat Monitor</h2>
+                                <p class="chat-subtitle">Review active conversations in real time and reply without leaving the dashboard.</p>
+                            </div>
+                            <div class="chat-selector">
+                                <label for="chatSelect">Chat</label>
+                                <div class="chat-selector-row">
+                                    <select id="chatSelect" class="group-select">
+                                        <option value="">Start the bot to load chats</option>
+                                    </select>
+                                    <button id="chatRefreshBtn" type="button" class="chat-refresh-btn">Refresh</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-transcript" id="chatMessages" aria-live="polite" aria-busy="false">
+                            <div class="chat-empty">Start the bot to browse chats.</div>
+                        </div>
+                        <div class="chat-status" id="chatStatus">Chats update automatically when selected.</div>
+                        <form id="chatComposer" class="chat-composer">
+                            <div class="form-field">
+                                <label for="chatMessageInput">Write a reply</label>
+                                <textarea id="chatMessageInput" class="chat-input" placeholder="Type a message to send to this chat..." autocomplete="off"></textarea>
+                            </div>
+                            <div class="chat-composer-actions">
+                                <span class="chat-hint">Shift + Enter for a new line</span>
+                                <button id="chatSendBtn" type="submit" class="chat-send-btn">Send</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </section>
