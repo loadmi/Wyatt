@@ -29,6 +29,36 @@ export type TelegramGroup = {
 
 const groupCache = new Map<string, GroupCacheEntry>();
 
+type ChatCacheEntry = {
+  title: string;
+  type: "private" | "group" | "channel";
+  inputPeer: any;
+};
+
+export type DashboardChatSummary = {
+  id: string;
+  title: string;
+  type: ChatCacheEntry["type"];
+  lastMessage?: string;
+  lastTimestamp?: number;
+  unreadCount?: number;
+};
+
+export type DashboardChatMessage = {
+  id: number;
+  text: string;
+  from: "bot" | "contact";
+  sender?: string;
+  timestamp?: number;
+};
+
+export type DashboardChatHistory = {
+  chat: { id: string; title: string; type: ChatCacheEntry["type"] };
+  messages: DashboardChatMessage[];
+};
+
+const chatCache = new Map<string, ChatCacheEntry>();
+
 // Define a consistent return type for control functions
 interface ControlResponse {
   success: boolean;
@@ -325,9 +355,115 @@ function toDialogKey(raw: any): string | null {
   return null;
 }
 
+function resolveDialogType(dialog: any, entity: any): ChatCacheEntry["type"] {
+  if (dialog?.isUser) return "private";
+  if (dialog?.isGroup) return "group";
+  if (dialog?.isChannel) {
+    if (entity?.megagroup || entity?.gigagroup || entity?.isGroup) {
+      return "group";
+    }
+    return "channel";
+  }
+
+  const className = entity?.className || entity?.constructor?.name;
+  if (className === "User") return "private";
+  if (className === "Chat" || className === "ChatForbidden") return "group";
+  if (className === "Channel" || className === "ChannelForbidden") {
+    return entity?.megagroup ? "group" : "channel";
+  }
+  return "group";
+}
+
+function resolveDialogTitle(dialog: any, entity: any, fallbackId: string): string {
+  const titleSources = [
+    dialog?.title,
+    entity?.title,
+    entity?.name,
+    entity?.firstName,
+    entity?.username,
+  ]
+    .map((value) => (typeof value === "string" ? value : null))
+    .filter((value) => value && value.trim().length > 0) as string[];
+
+  if (titleSources.length > 0) {
+    if (entity?.lastName && typeof entity.lastName === "string") {
+      const combined = `${titleSources[0]} ${entity.lastName}`.trim();
+      if (combined.length > 0) {
+        return combined;
+      }
+    }
+    return titleSources[0];
+  }
+
+  if (entity?.lastName && typeof entity.lastName === "string") {
+    const firstName = typeof entity?.firstName === "string" ? entity.firstName : "";
+    const composed = `${firstName} ${entity.lastName}`.trim();
+    if (composed.length > 0) {
+      return composed;
+    }
+  }
+
+  return `Chat ${fallbackId}`;
+}
+
+function normaliseTimestamp(value: any): number | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") {
+    if (value > 1_000_000_000_000) return value;
+    return value * 1000;
+  }
+  try {
+    const numeric = Number(value.valueOf?.() ?? value);
+    if (Number.isFinite(numeric)) {
+      if (numeric > 1_000_000_000_000) return numeric;
+      return numeric * 1000;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function describeSender(message: any, fallback: string): string {
+  try {
+    const sender: any = message?.sender;
+    const parts: string[] = [];
+    if (typeof sender?.firstName === "string") parts.push(sender.firstName);
+    if (typeof sender?.lastName === "string") parts.push(sender.lastName);
+    const composed = parts.join(" ").trim();
+    if (composed) return composed;
+    if (typeof sender?.title === "string" && sender.title.trim()) return sender.title.trim();
+    if (typeof sender?.username === "string" && sender.username.trim()) return sender.username.trim();
+    const senderId = sender?.id ?? sender?.userId ?? sender?.channelId ?? sender?.chatId;
+    if (senderId !== undefined && senderId !== null) {
+      return `User ${senderId}`;
+    }
+  } catch { }
+  return fallback;
+}
+
+async function resolveChatEntry(chatId: string): Promise<ChatCacheEntry | undefined> {
+  if (chatCache.has(chatId)) {
+    return chatCache.get(chatId);
+  }
+  try {
+    await listChats();
+  } catch {
+    return undefined;
+  }
+  return chatCache.get(chatId);
+}
+
 async function resolveGroupInputPeer(groupId: string): Promise<GroupCacheEntry | undefined> {
   if (groupCache.has(groupId)) {
     return groupCache.get(groupId);
+  }
+  const entry = await resolveChatEntry(groupId);
+  if (entry && entry.type !== "private") {
+    const groupEntry: GroupCacheEntry = { title: entry.title, inputPeer: entry.inputPeer };
+    groupCache.set(groupId, groupEntry);
+    return groupEntry;
   }
   const groups = await listTelegramGroups();
   return groups.find((g) => g.id === groupId) ? groupCache.get(groupId) : undefined;
@@ -336,43 +472,169 @@ async function resolveGroupInputPeer(groupId: string): Promise<GroupCacheEntry |
 export async function listTelegramGroups(): Promise<TelegramGroup[]> {
   ensureClientReady();
 
-  const dialogs = await client.getDialogs({ limit: 200 });
-  const nextCache = new Map<string, GroupCacheEntry>();
+  if (chatCache.size === 0) {
+    await listChats();
+  }
+
   const groups: TelegramGroup[] = [];
+  groupCache.clear();
+
+  for (const [id, entry] of chatCache.entries()) {
+    if (entry.type === "private") {
+      continue;
+    }
+    groupCache.set(id, { title: entry.title, inputPeer: entry.inputPeer });
+    groups.push({ id, title: entry.title });
+  }
+
+  groups.sort((a, b) => a.title.localeCompare(b.title));
+  return groups;
+}
+
+export async function listChats(): Promise<DashboardChatSummary[]> {
+  ensureClientReady();
+
+  const dialogs = await client.getDialogs({ limit: 300 });
+  const nextCache = new Map<string, ChatCacheEntry>();
+  const summaries: DashboardChatSummary[] = [];
 
   for (const dialog of dialogs) {
-    const isGroupLike = (dialog as any)?.isGroup === true || (dialog as any)?.isChannel === true;
-    if (!isGroupLike) continue;
+    const entity: any = (dialog as any)?.entity;
+    if (!entity) continue;
 
-    const entity: any = (dialog as any).entity;
-    const key = toDialogKey((dialog as any).id ?? entity?.id ?? entity?.channelId ?? entity?.chatId);
+    const key = toDialogKey((dialog as any).id ?? entity?.id ?? entity?.userId ?? entity?.channelId ?? entity?.chatId);
     if (!key) continue;
-
-    const title =
-      (entity?.title && String(entity.title)) ||
-      (entity?.firstName && String(entity.firstName)) ||
-      (entity?.username && String(entity.username)) ||
-      `Group ${key}`;
 
     let inputPeer: any;
     try {
       inputPeer = await client.getInputEntity(entity);
     } catch (error) {
-      console.warn(`Failed to resolve input entity for group ${title}:`, (error as any)?.message || error);
+      console.warn(
+        `Failed to resolve input entity for dialog ${String(entity?.username || entity?.title || key)}:`,
+        (error as any)?.message || error,
+      );
       continue;
     }
 
-    nextCache.set(key, { title, inputPeer });
-    groups.push({ id: key, title });
+    const type = resolveDialogType(dialog, entity);
+    const title = resolveDialogTitle(dialog, entity, key);
+    const message: any = (dialog as any)?.message;
+    const lastMessage = typeof message?.message === "string" ? message.message.trim() : "";
+    const lastTimestamp = normaliseTimestamp(message?.date);
+    const unreadCountRaw = Number((dialog as any)?.unreadCount ?? 0);
+    const unreadMentionsRaw = Number((dialog as any)?.unreadMentionsCount ?? 0);
+    const unreadTotal = [unreadCountRaw, unreadMentionsRaw]
+      .map((n) => (Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0))
+      .reduce((acc, value) => acc + value, 0);
+
+    nextCache.set(key, { title, type, inputPeer });
+
+    const summary: DashboardChatSummary = { id: key, title, type };
+    if (lastMessage) {
+      summary.lastMessage = lastMessage.length > 220 ? `${lastMessage.slice(0, 217)}…` : lastMessage;
+    }
+    if (Number.isFinite(lastTimestamp)) {
+      summary.lastTimestamp = lastTimestamp;
+    }
+    if (unreadTotal > 0) {
+      summary.unreadCount = unreadTotal;
+    }
+    summaries.push(summary);
   }
 
-  groups.sort((a, b) => a.title.localeCompare(b.title));
-  groupCache.clear();
-  for (const [key, value] of nextCache.entries()) {
-    groupCache.set(key, value);
+  chatCache.clear();
+  for (const [id, entry] of nextCache.entries()) {
+    chatCache.set(id, entry);
   }
 
-  return groups;
+  summaries.sort((a, b) => {
+    const timeA = a.lastTimestamp ?? 0;
+    const timeB = b.lastTimestamp ?? 0;
+    if (timeA === timeB) {
+      return a.title.localeCompare(b.title);
+    }
+    return timeB - timeA;
+  });
+
+  return summaries;
+}
+
+export async function getChatHistory(chatId: string, limit = 150): Promise<DashboardChatHistory> {
+  ensureClientReady();
+
+  const entry = await resolveChatEntry(chatId);
+  if (!entry) {
+    throw new Error("Chat not found or not accessible.");
+  }
+
+  const messages: DashboardChatMessage[] = [];
+  try {
+    const iterator = client.iterMessages(entry.inputPeer, { limit });
+    for await (const message of iterator) {
+      if (!message) continue;
+      const idRaw = (message as any)?.id;
+      const id = typeof idRaw === "number" ? idRaw : Number(idRaw) || Date.now();
+      let text = typeof (message as any)?.message === "string" ? String((message as any).message).trim() : "";
+      if (!text) {
+        if ((message as any)?.media) {
+          text = "[media message]";
+        } else if ((message as any)?.action) {
+          text = "[system message]";
+        } else {
+          text = "[non-text message]";
+        }
+      }
+
+      const timestamp = normaliseTimestamp((message as any)?.date);
+      const from = (message as any)?.out ? "bot" : "contact";
+      const senderName = from === "bot" ? "You" : describeSender(message, entry.title);
+
+      messages.push({ id, text, from, sender: senderName, timestamp });
+    }
+  } catch (error) {
+    console.warn(`Failed to fetch chat history for ${chatId}:`, (error as any)?.message || error);
+  }
+
+  messages.sort((a, b) => {
+    const timeA = a.timestamp ?? 0;
+    const timeB = b.timestamp ?? 0;
+    if (timeA === timeB) {
+      return a.id - b.id;
+    }
+    return timeA - timeB;
+  });
+
+  return {
+    chat: { id: chatId, title: entry.title, type: entry.type },
+    messages,
+  };
+}
+
+export async function sendMessageToChat(chatId: string, text: string): Promise<{ success: boolean; message: string }> {
+  try {
+    ensureClientReady();
+  } catch (error) {
+    const msg = (error as any)?.message || "Telegram client is not running";
+    return { success: false, message: msg };
+  }
+
+  const entry = await resolveChatEntry(chatId);
+  if (!entry) {
+    return { success: false, message: "Chat not found or not accessible." };
+  }
+
+  const payload = typeof text === "string" ? text.trim() : String(text ?? "").trim();
+  if (!payload) {
+    return { success: false, message: "Message text is required." };
+  }
+
+  try {
+    await client.sendMessage(entry.inputPeer, { message: payload });
+    return { success: true, message: "Message sent." };
+  } catch (error) {
+    console.error(`Failed to send manual message to chat ${chatId}:`, error);
+    return { success: false, message: "Failed to send message." };
+  }
 }
 
 async function collectGroupSamples(inputPeer: any): Promise<SentimentSample[]> {
