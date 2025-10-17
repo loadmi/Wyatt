@@ -168,7 +168,7 @@ class BotController {
         this.chatRefreshRates = {
             turtle: { interval: 15000, listEvery: 2 },
             normal: { interval: 5000, listEvery: 3 },
-            rabbit: { interval: 1000, listEvery: 5 },
+            rabbit: { interval: 2000, listEvery: 5 },
         };
         this.chatRefreshSpeed = this.loadChatRefreshSpeed();
 
