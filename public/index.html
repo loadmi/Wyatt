@@ -781,7 +781,7 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             gap: 12px;
         }
 
@@ -789,6 +789,55 @@
             display: flex;
             gap: 8px;
             align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .chat-speed-toggle {
+            display: inline-flex;
+            align-items: stretch;
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid var(--tab-border);
+            background: var(--tab-bg);
+        }
+
+        .chat-speed-option {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            padding: 6px 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .chat-speed-option:not(:last-child) {
+            border-right: 1px solid var(--tab-border);
+        }
+
+        .chat-speed-option[aria-pressed="true"] {
+            background: var(--tab-active-bg);
+            color: var(--heading);
+        }
+
+        .chat-speed-option:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .chat-speed-option-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .chat-speed-option-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
 
         .chat-refresh-btn {
@@ -1307,6 +1356,20 @@
                             <p class="panel-subtext">Monitor the latest dialogues and respond instantly from the dashboard.</p>
                         </div>
                         <div class="chat-header-actions">
+                            <div id="chatSpeedToggle" class="chat-speed-toggle" role="group" aria-label="Chat refresh speed">
+                                <button type="button" class="chat-speed-option" data-chat-speed="turtle" aria-pressed="false" title="Slow refresh rate">
+                                    <span class="chat-speed-option-icon" aria-hidden="true">🐢</span>
+                                    <span class="chat-speed-option-label">Turtle</span>
+                                </button>
+                                <button type="button" class="chat-speed-option" data-chat-speed="normal" aria-pressed="true" title="Standard refresh rate">
+                                    <span class="chat-speed-option-icon" aria-hidden="true">⚖️</span>
+                                    <span class="chat-speed-option-label">Normal</span>
+                                </button>
+                                <button type="button" class="chat-speed-option" data-chat-speed="rabbit" aria-pressed="false" title="Fast refresh rate">
+                                    <span class="chat-speed-option-icon" aria-hidden="true">🐇</span>
+                                    <span class="chat-speed-option-label">Rabbit</span>
+                                </button>
+                            </div>
                             <button id="chatRefreshBtn" type="button" class="chat-refresh-btn">Refresh</button>
                         </div>
                     </div>

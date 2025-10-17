@@ -140,6 +140,7 @@ class BotController {
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
+        this.chatSpeedOptions = Array.from(document.querySelectorAll('[data-chat-speed]'));
         this.chatSearchInput = document.getElementById('chatSearchInput');
         this.chatStatusBanner = document.getElementById('chatStatus');
         this.chatTitleEl = document.getElementById('chatActiveTitle');
@@ -154,6 +155,21 @@ class BotController {
         this.activeChatId = null;
         this.chatPollInterval = null;
         this.chatPollTick = 0;
+        this.chatRefreshModes = {
+            turtle: { interval: 9000, label: 'Turtle', listEvery: 2 },
+            normal: { interval: 5000, label: 'Normal', listEvery: 3 },
+            rabbit: { interval: 1000, label: 'Rabbit', listEvery: 5 },
+        };
+        this.chatRefreshMode = 'normal';
+        try {
+            const storedMode = window.localStorage?.getItem('chatRefreshMode');
+            if (storedMode && Object.prototype.hasOwnProperty.call(this.chatRefreshModes, storedMode)) {
+                this.chatRefreshMode = storedMode;
+            }
+        } catch (error) {
+            console.warn('Unable to read chat refresh preference:', error);
+        }
+        this.chatListRefreshEvery = this.chatRefreshModes[this.chatRefreshMode].listEvery;
         this.chatLoading = false;
         this.loadingChats = false;
         this.chatSending = false;
@@ -180,6 +196,16 @@ class BotController {
         }
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
+        }
+        if (this.chatSpeedOptions.length > 0) {
+            this.chatSpeedOptions.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const mode = button.dataset.chatSpeed;
+                    if (mode) {
+                        this.setChatRefreshMode(mode);
+                    }
+                });
+            });
         }
         if (this.chatSearchInput) {
             this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
@@ -208,6 +234,7 @@ class BotController {
             this.chatMessagesEl.addEventListener('scroll', () => this.handleChatScroll());
         }
 
+        this.updateChatSpeedToggle();
         this.updateChatStatus('Select a chat to preview live messages.', 'info');
         this.updateChatComposerState();
 
@@ -890,6 +917,48 @@ class BotController {
         this.chatAutoScroll = nearBottom;
     }
 
+    getChatRefreshInterval() {
+        const mode = this.chatRefreshMode;
+        if (mode && Object.prototype.hasOwnProperty.call(this.chatRefreshModes, mode)) {
+            const interval = this.chatRefreshModes[mode].interval;
+            if (Number.isFinite(interval) && interval > 0) {
+                return interval;
+            }
+        }
+        return this.chatRefreshModes.normal.interval;
+    }
+
+    updateChatSpeedToggle() {
+        if (!this.chatSpeedOptions || this.chatSpeedOptions.length === 0) {
+            return;
+        }
+        const current = this.chatRefreshMode;
+        this.chatSpeedOptions.forEach((button) => {
+            const isActive = button.dataset.chatSpeed === current;
+            button.setAttribute('aria-pressed', String(isActive));
+        });
+    }
+
+    setChatRefreshMode(mode) {
+        if (!mode || !Object.prototype.hasOwnProperty.call(this.chatRefreshModes, mode)) {
+            return;
+        }
+        if (this.chatRefreshMode === mode) {
+            return;
+        }
+        this.chatRefreshMode = mode;
+        this.chatListRefreshEvery = this.chatRefreshModes[mode].listEvery;
+        this.updateChatSpeedToggle();
+        try {
+            window.localStorage?.setItem('chatRefreshMode', mode);
+        } catch (error) {
+            console.warn('Unable to persist chat refresh preference:', error);
+        }
+        if (this.chatPollInterval) {
+            this.startChatPolling({ force: true });
+        }
+    }
+
     updateChatStatus(message, variant = 'info', options = {}) {
         if (!this.chatStatusBanner) return;
         if (this._chatStatusTimer) {
@@ -1063,17 +1132,18 @@ class BotController {
         }
     }
 
-    startChatPolling() {
+    startChatPolling({ force = false } = {}) {
         if (!this.chatListContainer) return;
-        if (this.chatPollInterval) return;
+        if (this.chatPollInterval && !force) return;
+        this.stopChatPolling();
         if (!this.botIsRunning) {
             this.loadChats({ silent: false, preserveActive: true });
             return;
         }
-        this.stopChatPolling();
         this.loadChats({ silent: false, preserveActive: true });
         this.refreshActiveChat({ force: true, silent: true });
         this.chatPollTick = 0;
+        const intervalMs = this.getChatRefreshInterval();
         this.chatPollInterval = setInterval(() => {
             if (!this.botIsRunning) {
                 this.stopChatPolling();
@@ -1081,10 +1151,10 @@ class BotController {
             }
             this.chatPollTick += 1;
             this.refreshActiveChat({ silent: true });
-            if (this.chatPollTick % 3 === 0) {
+            if (this.chatPollTick % this.chatListRefreshEvery === 0) {
                 this.loadChats({ silent: true, preserveActive: true });
             }
-        }, 5000);
+        }, intervalMs);
     }
 
     stopChatPolling() {
