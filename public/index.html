@@ -392,6 +392,21 @@
             gap: 18px;
         }
 
+        /* Improve OpenRouter rows layout and truncation */
+        #openrouterModelRow,
+        #openrouterKeyRow {
+            grid-column: 1 / -1; /* span full width to avoid right-edge squish */
+        }
+
+        .model-select {
+            width: 100%;
+            max-width: 100%;
+            padding-inline: 12px; /* symmetric padding for long labels */
+            white-space: nowrap; /* avoid multi-line select text on some UAs */
+            overflow: hidden;
+            text-overflow: ellipsis; /* best-effort truncation; support varies by UA */
+        }
+
         .form-field {
             display: grid;
             gap: 8px;
