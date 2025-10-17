@@ -149,6 +149,24 @@ class BotController {
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
         this.chatBlendBtn = document.getElementById('chatBlendBtn');
+        this.chatSpeedToggle = document.getElementById('chatSpeedToggle');
+        this.chatSpeedButtons = this.chatSpeedToggle ? Array.from(this.chatSpeedToggle.querySelectorAll('button[data-mode]')) : [];
+        this.chatRefreshModes = {
+            turtle: { interval: 10000 },
+            normal: { interval: 5000 },
+            rabbit: { interval: 1000 },
+        };
+        this.chatRefreshMode = 'normal';
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const storedMode = window.localStorage.getItem('chatRefreshMode');
+                if (storedMode && this.chatRefreshModes[storedMode]) {
+                    this.chatRefreshMode = storedMode;
+                }
+            }
+        } catch (error) {
+            // Ignore storage access issues (e.g., privacy mode)
+        }
         this.chatListData = [];
         this.filteredChats = [];
         this.activeChatId = null;
@@ -181,6 +199,15 @@ class BotController {
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
         }
+        if (this.chatSpeedButtons.length > 0) {
+            this.chatSpeedButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const mode = button.dataset.mode;
+                    this.setChatRefreshMode(mode);
+                });
+            });
+        }
+        this.updateChatRefreshToggle();
         if (this.chatSearchInput) {
             this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
         }
@@ -1063,28 +1090,90 @@ class BotController {
         }
     }
 
-    startChatPolling() {
-        if (!this.chatListContainer) return;
-        if (this.chatPollInterval) return;
-        if (!this.botIsRunning) {
-            this.loadChats({ silent: false, preserveActive: true });
+    getChatPollIntervalMs() {
+        const fallback = this.chatRefreshModes?.normal?.interval ?? 5000;
+        const mode = this.chatRefreshModes?.[this.chatRefreshMode];
+        const interval = Number(mode?.interval ?? fallback);
+        if (!Number.isFinite(interval) || interval <= 0) {
+            return fallback;
+        }
+        return Math.max(500, Math.floor(interval));
+    }
+
+    getChatListRefreshIntervalMs() {
+        const base = this.getChatPollIntervalMs();
+        return Math.max(base * 3, 3000);
+    }
+
+    setChatRefreshMode(mode) {
+        if (!mode || !this.chatRefreshModes?.[mode]) {
             return;
         }
+        if (this.chatRefreshMode === mode) {
+            return;
+        }
+        this.chatRefreshMode = mode;
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem('chatRefreshMode', mode);
+            }
+        } catch (error) {
+            // Ignore storage write issues (e.g., privacy mode)
+        }
+        this.updateChatRefreshToggle();
+        if (this.botIsRunning && this.currentTab === 'chats') {
+            this.startChatPolling({ silent: true });
+        }
+    }
+
+    updateChatRefreshToggle() {
+        if (!Array.isArray(this.chatSpeedButtons)) {
+            return;
+        }
+        this.chatSpeedButtons.forEach(button => {
+            const isActive = button.dataset.mode === this.chatRefreshMode;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', String(isActive));
+        });
+        if (this.chatSpeedToggle) {
+            this.chatSpeedToggle.setAttribute('data-active-mode', this.chatRefreshMode);
+        }
+    }
+
+    startChatPolling(options = {}) {
+        const { silent = false } = options;
+        if (!this.chatListContainer) return;
+
         this.stopChatPolling();
-        this.loadChats({ silent: false, preserveActive: true });
+
+        if (!this.botIsRunning) {
+            this.loadChats({ silent, preserveActive: true });
+            return;
+        }
+
+        const pollInterval = this.getChatPollIntervalMs();
+        if (!Number.isFinite(pollInterval) || pollInterval <= 0) {
+            return;
+        }
+
+        this.loadChats({ silent, preserveActive: true });
         this.refreshActiveChat({ force: true, silent: true });
+
+        const chatListInterval = this.getChatListRefreshIntervalMs();
         this.chatPollTick = 0;
+
         this.chatPollInterval = setInterval(() => {
             if (!this.botIsRunning) {
                 this.stopChatPolling();
                 return;
             }
-            this.chatPollTick += 1;
             this.refreshActiveChat({ silent: true });
-            if (this.chatPollTick % 3 === 0) {
+            this.chatPollTick += pollInterval;
+            if (this.chatPollTick >= chatListInterval) {
+                this.chatPollTick = 0;
                 this.loadChats({ silent: true, preserveActive: true });
             }
-        }, 5000);
+        }, pollInterval);
     }
 
     stopChatPolling() {
