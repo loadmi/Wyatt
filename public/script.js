@@ -140,6 +140,8 @@ class BotController {
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
+        this.chatSpeedToggle = document.getElementById('chatSpeedToggle');
+        this.chatSpeedButtons = this.chatSpeedToggle ? Array.from(this.chatSpeedToggle.querySelectorAll('[data-speed]')) : [];
         this.chatSearchInput = document.getElementById('chatSearchInput');
         this.chatStatusBanner = document.getElementById('chatStatus');
         this.chatTitleEl = document.getElementById('chatActiveTitle');
@@ -163,6 +165,12 @@ class BotController {
         this._chatStatusTimer = null;
         this.chatRenderCache = new Map();
         this.currentTab = 'overview';
+        this.chatRefreshRates = {
+            turtle: { interval: 15000, listEvery: 2 },
+            normal: { interval: 5000, listEvery: 3 },
+            rabbit: { interval: 1000, listEvery: 5 },
+        };
+        this.chatRefreshSpeed = this.loadChatRefreshSpeed();
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
@@ -181,6 +189,15 @@ class BotController {
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
         }
+        if (this.chatSpeedButtons.length > 0) {
+            this.chatSpeedButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const speed = button.dataset.speed || 'normal';
+                    this.setChatRefreshSpeed(speed);
+                });
+            });
+        }
+        this.updateChatSpeedToggleUI();
         if (this.chatSearchInput) {
             this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
         }
@@ -1035,6 +1052,69 @@ class BotController {
         });
     }
 
+    loadChatRefreshSpeed() {
+        const fallback = 'normal';
+        try {
+            const stored = localStorage.getItem('chatRefreshSpeed');
+            if (stored && this.chatRefreshRates && this.chatRefreshRates[stored]) {
+                return stored;
+            }
+        } catch (error) {
+            // ignore storage errors
+        }
+        return fallback;
+    }
+
+    persistChatRefreshSpeed() {
+        try {
+            localStorage.setItem('chatRefreshSpeed', this.chatRefreshSpeed);
+        } catch (error) {
+            // ignore storage errors
+        }
+    }
+
+    updateChatSpeedToggleUI() {
+        if (!Array.isArray(this.chatSpeedButtons)) return;
+        this.chatSpeedButtons.forEach(button => {
+            const speed = button.dataset.speed || 'normal';
+            const config = this.chatRefreshRates?.[speed];
+            const isActive = speed === this.chatRefreshSpeed;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', String(isActive));
+            if (isActive) {
+                button.setAttribute('aria-current', 'true');
+            } else {
+                button.removeAttribute('aria-current');
+            }
+            if (config && Number.isFinite(config.interval)) {
+                const seconds = config.interval / 1000;
+                let formatted;
+                if (seconds >= 1) {
+                    const precise = seconds < 3 ? Number(seconds.toFixed(1)) : Math.round(seconds);
+                    formatted = `${precise}s`;
+                } else {
+                    formatted = `${Math.round(config.interval)}ms`;
+                }
+                button.title = `Refresh every ${formatted}`;
+            }
+        });
+    }
+
+    setChatRefreshSpeed(speed) {
+        const fallback = 'normal';
+        const nextSpeed = this.chatRefreshRates && this.chatRefreshRates[speed] ? speed : fallback;
+        if (this.chatRefreshSpeed === nextSpeed) {
+            return;
+        }
+        this.chatRefreshSpeed = nextSpeed;
+        this.persistChatRefreshSpeed();
+        this.updateChatSpeedToggleUI();
+        if (this.currentTab === 'chats') {
+            this.stopChatPolling();
+            this.startChatPolling();
+        }
+    }
+
     setActiveChat(chatId, { triggerFetch = false } = {}) {
         if (chatId === this.activeChatId && !triggerFetch) {
             return;
@@ -1074,6 +1154,9 @@ class BotController {
         this.loadChats({ silent: false, preserveActive: true });
         this.refreshActiveChat({ force: true, silent: true });
         this.chatPollTick = 0;
+        const config = this.chatRefreshRates?.[this.chatRefreshSpeed] || this.chatRefreshRates.normal || { interval: 5000, listEvery: 3 };
+        const intervalMs = Math.max(500, Number(config.interval) || 5000);
+        const listEvery = Math.max(1, Math.round(Number.isFinite(config.listEvery) ? config.listEvery : 3));
         this.chatPollInterval = setInterval(() => {
             if (!this.botIsRunning) {
                 this.stopChatPolling();
@@ -1081,10 +1164,10 @@ class BotController {
             }
             this.chatPollTick += 1;
             this.refreshActiveChat({ silent: true });
-            if (this.chatPollTick % 3 === 0) {
+            if (this.chatPollTick % listEvery === 0) {
                 this.loadChats({ silent: true, preserveActive: true });
             }
-        }, 5000);
+        }, intervalMs);
     }
 
     stopChatPolling() {
