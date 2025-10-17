@@ -140,6 +140,7 @@ class BotController {
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
+        this.chatSpeedToggle = document.getElementById('chatSpeedToggle');
         this.chatSearchInput = document.getElementById('chatSearchInput');
         this.chatStatusBanner = document.getElementById('chatStatus');
         this.chatTitleEl = document.getElementById('chatActiveTitle');
@@ -153,7 +154,23 @@ class BotController {
         this.filteredChats = [];
         this.activeChatId = null;
         this.chatPollInterval = null;
-        this.chatPollTick = 0;
+        this.chatRefreshRates = {
+            slow: 15000,
+            normal: 5000,
+            fast: 1000,
+        };
+        this.chatListRefreshEvery = 15000;
+        this.chatLastListRefresh = 0;
+        this.chatPollMode = 'normal';
+        try {
+            const savedSpeed = localStorage.getItem('chatRefreshSpeed');
+            if (savedSpeed && this.chatRefreshRates[savedSpeed]) {
+                this.chatPollMode = savedSpeed;
+            }
+        } catch (error) {
+            // Ignore storage errors (e.g., private browsing)
+        }
+        this.chatSpeedButtons = this.chatSpeedToggle ? Array.from(this.chatSpeedToggle.querySelectorAll('button[data-speed]')) : [];
         this.chatLoading = false;
         this.loadingChats = false;
         this.chatSending = false;
@@ -180,6 +197,12 @@ class BotController {
         }
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
+        }
+        if (this.chatSpeedButtons && this.chatSpeedButtons.length > 0) {
+            this.chatSpeedButtons.forEach(button => {
+                button.addEventListener('click', () => this.setChatPollMode(button.dataset.speed));
+            });
+            this.applyChatSpeedSelection();
         }
         if (this.chatSearchInput) {
             this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
@@ -1035,6 +1058,44 @@ class BotController {
         });
     }
 
+    getChatPollIntervalMs() {
+        return this.chatRefreshRates[this.chatPollMode] || this.chatRefreshRates.normal;
+    }
+
+    applyChatSpeedSelection() {
+        if (!Array.isArray(this.chatSpeedButtons)) return;
+        const activeMode = this.chatPollMode;
+        this.chatSpeedButtons.forEach(button => {
+            if (!button) return;
+            const isActive = button.dataset.speed === activeMode;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', String(isActive));
+        });
+    }
+
+    setChatPollMode(mode) {
+        if (!mode || !this.chatRefreshRates[mode]) {
+            return;
+        }
+        if (this.chatPollMode === mode) {
+            return;
+        }
+        this.chatPollMode = mode;
+        this.applyChatSpeedSelection();
+        try {
+            localStorage.setItem('chatRefreshSpeed', mode);
+        } catch (error) {
+            // Ignore storage persistence errors
+        }
+        if (this.currentTab === 'chats') {
+            if (this.botIsRunning) {
+                this.startChatPolling();
+            } else {
+                this.loadChats({ silent: true, preserveActive: true, force: true });
+            }
+        }
+    }
+
     setActiveChat(chatId, { triggerFetch = false } = {}) {
         if (chatId === this.activeChatId && !triggerFetch) {
             return;
@@ -1065,26 +1126,26 @@ class BotController {
 
     startChatPolling() {
         if (!this.chatListContainer) return;
-        if (this.chatPollInterval) return;
+        this.stopChatPolling();
         if (!this.botIsRunning) {
             this.loadChats({ silent: false, preserveActive: true });
             return;
         }
-        this.stopChatPolling();
         this.loadChats({ silent: false, preserveActive: true });
         this.refreshActiveChat({ force: true, silent: true });
-        this.chatPollTick = 0;
+        const intervalMs = this.getChatPollIntervalMs();
         this.chatPollInterval = setInterval(() => {
             if (!this.botIsRunning) {
                 this.stopChatPolling();
                 return;
             }
-            this.chatPollTick += 1;
             this.refreshActiveChat({ silent: true });
-            if (this.chatPollTick % 3 === 0) {
+            const now = Date.now();
+            if (!this.chatLastListRefresh || now - this.chatLastListRefresh >= this.chatListRefreshEvery) {
+                this.chatLastListRefresh = now;
                 this.loadChats({ silent: true, preserveActive: true });
             }
-        }, 5000);
+        }, intervalMs);
     }
 
     stopChatPolling() {
@@ -1092,7 +1153,7 @@ class BotController {
             clearInterval(this.chatPollInterval);
             this.chatPollInterval = null;
         }
-        this.chatPollTick = 0;
+        this.chatLastListRefresh = 0;
     }
 
     async loadChats({ silent = false, preserveActive = true, force = false } = {}) {
@@ -1124,6 +1185,7 @@ class BotController {
             }
             const chats = Array.isArray(data.chats) ? data.chats : [];
             this.chatListData = chats;
+            this.chatLastListRefresh = Date.now();
             this.applyChatFilter();
 
             if (preserveActive && this.activeChatId && chats.some(chat => chat.id === this.activeChatId)) {
