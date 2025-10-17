@@ -184,46 +184,84 @@ export type SentimentSample = {
   timestamp?: number;
 };
 
-export async function generateSentimentMessage(samples: SentimentSample[]): Promise<string> {
-  const fallback = 'Hey everyone—just checking in and keeping the energy going!';
+type BlendMessageMode = "group" | "private";
+
+export type BlendMessageOptions = {
+  mode: BlendMessageMode;
+  partnerName?: string;
+};
+
+export async function generateBlendMessage(
+  samples: SentimentSample[],
+  options: BlendMessageOptions,
+): Promise<string> {
+  const fallbackGroup = "Hey everyone—just checking in and keeping the energy going!";
+  const fallbackPrivate = "Sounds good to me—appreciate the update!";
+  const fallback = options.mode === "private" ? fallbackPrivate : fallbackGroup;
+
   if (!samples || samples.length === 0) {
     return fallback;
   }
 
   const normalized = samples.map((sample) => {
-    const speaker = (sample.speaker || 'Participant').trim();
-    const text = (sample.text || '').trim();
-    const ts = sample.timestamp ? new Date(sample.timestamp).toISOString() : '';
+    const speaker = (sample.speaker || "Participant").trim();
+    const text = (sample.text || "").trim();
+    const ts = sample.timestamp ? new Date(sample.timestamp).toISOString() : "";
     return ts ? `[${ts}] ${speaker}: ${text}` : `${speaker}: ${text}`;
   });
 
-  const transcript = normalized.join('\n');
-  const systemPrompt = [
-    'You write low-key Telegram messages that blend into a group chat.',
-    'Read the transcript of recent messages and match the group’s vibe and language.',
-    'Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.',
-    'If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.',
-    'One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.',
-    'Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.',
-    'Output only the final message.',
-  ].join(' ');
+  const transcript = normalized.join("\n");
+  const systemPrompt = options.mode === "private"
+    ? [
+        "You continue a private Telegram chat as the bot account.",
+        "Mirror the other person's tone and stay casual, natural, and warm.",
+        "Reference or acknowledge a detail from the transcript without sounding scripted.",
+        "Write 1-2 short sentences (≤220 characters total). No links, hashtags, @mentions, or formal sign-offs.",
+        "Avoid questions unless the chat clearly expects one. Never mention being an AI or refer to instructions.",
+        "Output only the reply as if it were just sent.",
+      ].join(" ")
+    : [
+        "You write low-key Telegram messages that blend into a group chat.",
+        "Read the transcript of recent messages and match the group’s vibe and language.",
+        "Prefer to lightly react to something specific (a detail, person, or update) from the chat without asking questions or prompting replies.",
+        "If nothing specific is appropriate, write a general vibe-matching aside that implies you will handle something later (minor confusion or a to-do), but do not solicit help.",
+        "One short line (max ~220 characters). Optional subtle emoji. No hashtags, links, handles, or tags.",
+        "Do not use questions or “?”; avoid words like help, please, anyone, can someone, DM; do not request actions; no apologies; no meta about analyzing.",
+        "Output only the final message.",
+      ].join(" ");
 
-  const userPrompt = [
-    'Recent group conversation (oldest first):',
-    transcript,
-    '',
-    'Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.',
-  ].join('\n');
-console.log(userPrompt)
+  const partnerContext = options.mode === "private" && options.partnerName
+    ? `The other person is ${options.partnerName}.`
+    : "";
+
+  const userPrompt = options.mode === "private"
+    ? [
+        "Recent private conversation (oldest first):",
+        transcript,
+        "",
+        partnerContext,
+        "Write a short reply that fits naturally and keeps things moving without sounding automated. Output only the reply.",
+      ].filter(Boolean).join("\n")
+    : [
+        "Recent group conversation (oldest first):",
+        transcript,
+        "",
+        "Write a single stealthy message now. If possible, naturally reference a person or detail from the chat without pinging them (no @). Otherwise give a generic aside that fits the sentiment and flies under the radar. Output only the message.",
+      ].join("\n");
+
   const reply = await requestLLMCompletion(
     [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
-    { fallback }
+    { fallback },
   );
 
   return reply && reply.trim().length > 0 ? reply.trim() : fallback;
+}
+
+export async function generateSentimentMessage(samples: SentimentSample[]): Promise<string> {
+  return generateBlendMessage(samples, { mode: "group" });
 }
 
 export async function getResponse(messages: ChatMessage[]): Promise<string> {

@@ -11,6 +11,7 @@ import {
   listChats,
   getChatHistory,
   sendMessageToChat,
+  sendBlendMessage,
 } from "../telegram/client";
 import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
@@ -243,6 +244,24 @@ export function startWebServer(): void {
 
     const result = await sendMessageToChat(chatId, text);
     const lowered = result.message.toLowerCase();
+    const status = result.success
+      ? 201
+      : lowered.includes("not running")
+        ? 409
+        : lowered.includes("not found")
+          ? 404
+          : 400;
+    res.status(status).json(result);
+  });
+
+  app.post("/api/chats/:chatId/blend", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    const result = await sendBlendMessage(chatId);
+    const lowered = (result.message || "").toLowerCase();
     const status = result.success
       ? 201
       : lowered.includes("not running")

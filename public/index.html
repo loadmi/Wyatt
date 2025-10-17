@@ -1165,8 +1165,6 @@
                 aria-controls="panel-overview" data-tab="overview">Overview</button>
             <button id="tab-configuration" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">Configuration</button>
-            <button id="tab-outreach" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-outreach" tabindex="-1" data-tab="outreach">Outreach</button>
             <button id="tab-chats" class="tab-button" type="button" role="tab" aria-selected="false"
                 aria-controls="panel-chats" tabindex="-1" data-tab="chats">Chats</button>
             <button id="tab-metrics" class="tab-button" type="button" role="tab" aria-selected="false"
@@ -1292,23 +1290,6 @@
                 </div>
             </section>
 
-            <section id="panel-outreach" class="tab-panel" role="tabpanel" aria-labelledby="tab-outreach" hidden>
-                <div class="panel-card">
-                    <h2 class="panel-title">Group Honeypot Outreach</h2>
-                    <p>Select a Telegram group and let the bot slip in a message that matches the current vibe.</p>
-                    <div class="group-section" aria-label="Group outreach tools">
-                        <div class="group-controls">
-                            <label for="groupSelect">Target group</label>
-                            <select id="groupSelect" class="group-select">
-                                <option value="">Choose a group…</option>
-                            </select>
-                            <button id="groupRefreshBtn" type="button" class="group-refresh-btn">Refresh</button>
-                            <button id="groupSendBtn" type="button" class="group-action-btn">Blend Message</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             <section id="panel-chats" class="tab-panel" role="tabpanel" aria-labelledby="tab-chats" hidden>
                 <div class="panel-card chat-panel">
                     <div class="chat-panel-header">
@@ -1338,6 +1319,7 @@
                             <form id="chatComposer" class="chat-composer">
                                 <textarea id="chatMessageInput" placeholder="Write a reply…" aria-label="Reply message" disabled></textarea>
                                 <div class="chat-composer-actions">
+                                    <button id="chatBlendBtn" type="button" disabled>Blend Reply</button>
                                     <button id="chatSendBtn" type="submit" disabled>Send</button>
                                 </div>
                             </form>
