@@ -21,6 +21,85 @@ const historyCache = new Map<string, ContextEntry[]>();
 let selfUsernameCached: string | null = null;
 let selfIdStringCached: string | null = null;
 
+// Wake up routine: track last interaction time per user/chat
+type InteractionRecord = {
+   lastInteraction: number; // timestamp
+   chatId: string; // to distinguish between different chats
+ };
+
+// Load persisted interaction tracker data
+function loadInteractionTracker(): Map<string, InteractionRecord> {
+   try {
+     const { loadPersistedState } = require("../persistence");
+     const persisted = loadPersistedState();
+     const tracker = new Map<string, InteractionRecord>();
+
+     if (persisted.interactionTracker) {
+       Object.entries(persisted.interactionTracker).forEach(([key, record]) => {
+         tracker.set(key, record as InteractionRecord);
+       });
+     }
+
+     return tracker;
+   } catch (e) {
+     console.warn("Failed to load interaction tracker:", (e as any)?.message || e);
+     return new Map<string, InteractionRecord>();
+   }
+ }
+
+const interactionTracker = loadInteractionTracker();
+
+// Helper function to get cache key for interaction tracking
+function getInteractionKey(senderId: string, chatId?: string): string {
+  // For private chats, use sender ID. For groups, combine sender and chat ID
+  return chatId ? `${senderId}_${chatId}` : senderId;
+}
+
+// Helper function to check if bot should wake up (has been inactive)
+function shouldWakeUp(senderId: string, chatId: string | undefined): boolean {
+   const key = getInteractionKey(senderId, chatId);
+  const record = interactionTracker.get(key);
+
+  if (!record) {
+    // No previous interaction, bot is "fresh" - no wake up needed
+    return false;
+  }
+
+  const timeSinceLastInteraction = Date.now() - record.lastInteraction;
+  return timeSinceLastInteraction > appConfig().sleepThresholdMs;
+}
+
+// Helper function to save interaction tracker to persistence
+function saveInteractionTracker(): void {
+   try {
+     const { savePersistedState } = require("../persistence");
+     const data: Record<string, InteractionRecord> = {};
+     interactionTracker.forEach((record, key) => {
+       data[key] = record;
+     });
+     savePersistedState({ interactionTracker: data });
+   } catch (e) {
+     console.warn("Failed to save interaction tracker:", (e as any)?.message || e);
+   }
+ }
+
+// Helper function to update last interaction time
+function updateLastInteraction(senderId: string, chatId: string | undefined): void {
+   const key = getInteractionKey(senderId, chatId);
+   interactionTracker.set(key, {
+     lastInteraction: Date.now(),
+     chatId: chatId || senderId
+   });
+   // Persist the updated interaction data
+   saveInteractionTracker();
+ }
+
+// Helper function to get wake up delay duration
+function getWakeUpDelay(): number {
+  const config = appConfig();
+  return randomInRange(config.wakeUpDelayMs.min, config.wakeUpDelayMs.max);
+}
+
 async function getSelfIdentity(client: any): Promise<{ usernameLower: string | null; idString: string | null }> {
   if (selfUsernameCached !== null || selfIdStringCached !== null) {
     return { usernameLower: selfUsernameCached, idString: selfIdStringCached };
@@ -318,6 +397,18 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   recordInbound(senderIdString);
 
+  // Wake up routine: check if bot has been inactive and needs to wake up
+  const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
+  const chatId = chatIdRaw || undefined; // Convert null to undefined
+  const needsWakeUp = shouldWakeUp(senderIdString, chatId);
+
+  if (needsWakeUp) {
+    const wakeUpDelay = getWakeUpDelay();
+    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay/1000)}s delay)...`);
+    await sleep(wakeUpDelay);
+    console.log(`✅ Bot awake and ready to respond`);
+  }
+
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -337,7 +428,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   llmContext = convertContextToLLM(context, appConfig().systemPrompt);
 
 
-  console.log("Context:", llmContext);
+ // console.log("Context:", llmContext);
 
 
   const composeStartedAt = Date.now();
@@ -422,6 +513,9 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       outboundRecorded = true;
     }
     console.log(`Replied to ${senderIdString}: "${replyText}"`);
+
+    // Update last interaction time after successful response
+    updateLastInteraction(senderIdString, chatId);
   } catch (error) {
     console.error("Failed to send message:", error);
 
@@ -442,6 +536,9 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         outboundRecorded = true;
       }
       console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
+
+      // Update last interaction time after successful response
+      updateLastInteraction(senderIdString, chatId);
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);
     }

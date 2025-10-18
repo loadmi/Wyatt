@@ -3,16 +3,18 @@ import path from 'path';
 import type { TelegramAccount } from './config';
 
 export type PersistedState = {
-  currentPersona?: string;
-  llmProvider?: 'pollinations' | 'openrouter';
-  openrouterModel?: string;
-  // Secret for OpenRouter (never returned to clients). Stored locally.
-  openrouterApiKey?: string;
-  // Store resolved system prompt text to avoid dynamic imports at boot
-  systemPrompt?: string;
-  telegramAccounts?: TelegramAccount[];
-  activeAccountId?: string | null;
-};
+   currentPersona?: string;
+   llmProvider?: 'pollinations' | 'openrouter';
+   openrouterModel?: string;
+   // Secret for OpenRouter (never returned to clients). Stored locally.
+   openrouterApiKey?: string;
+   // Store resolved system prompt text to avoid dynamic imports at boot
+   systemPrompt?: string;
+   telegramAccounts?: TelegramAccount[];
+   activeAccountId?: string | null;
+   // Track last interaction times per user/chat for wake up functionality
+   interactionTracker?: Record<string, { lastInteraction: number; chatId: string }>;
+ };
 
 function stateFilePath(): string {
   const dir = path.join(process.cwd(), 'data');

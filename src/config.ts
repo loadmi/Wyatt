@@ -47,6 +47,15 @@ const config = {
 
   // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
   typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
+
+  // Wake up routine configuration
+  wakeUpDelayMs: {
+    min: envNumber("WAKE_UP_DELAY_MS_MIN", 300_000),
+    max: envNumber("WAKE_UP_DELAY_MS_MAX", 600_000),
+  } as NumRange,
+
+  // How long before the bot is considered "asleep" (in milliseconds)
+  sleepThresholdMs: envNumber("SLEEP_THRESHOLD_MS", 300_000), // 5 minutes default
   systemPrompt: JSON.stringify(granny),
   // Track currently selected persona filename for dashboard persistence
   currentPersona: "granny.json",
