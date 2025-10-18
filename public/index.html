@@ -865,6 +865,26 @@
             transform: translateY(-1px);
         }
 
+        /* Mobile-only controls (hidden by default) */
+        .chat-toggle-sidebar,
+        .chat-close-sidebar {
+            display: none;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--tab-border);
+            background: var(--tab-bg);
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+        }
+        .chat-toggle-sidebar:hover,
+        .chat-close-sidebar:hover {
+            background: var(--tab-active-bg);
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+        }
+
         .chat-status {
             min-height: 1.1rem;
             font-size: 0.9rem;
@@ -888,8 +908,7 @@
         }
 
         .chat-layout {
-            display: grid;
-            grid-template-columns: minmax(230px, 280px) 1fr;
+            display: flex;
             gap: 20px;
             align-items: stretch;
             /* Avoid hard-fixed height; bound with responsive max-height so inner areas can scroll */
@@ -900,17 +919,20 @@
         }
 
         .chat-sidebar {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 12px;
             background: var(--log-bg);
             border: 1px solid var(--log-border);
             border-radius: 12px;
             padding: 16px;
-            /* Make the search, list, and empty-state stack with the list filling available space */
-            grid-template-rows: auto 1fr auto;
-            align-content: start; /* prevent vertical centering on tall containers */
+            /* Sidebar sizing within flex layout */
+            flex: 0 0 280px;
+            min-width: 230px;
+            max-width: 280px;
+            align-content: flex-start; /* keep content aligned to top */
             height: 100%;
-            min-height: 0; /* allow inner 1fr to shrink so list can scroll */
+            min-height: 0; /* allow inner area to shrink so list can scroll */
             overflow: hidden; /* avoid sidebar overflowing the layout */
         }
 
@@ -929,21 +951,22 @@
         }
 
         .chat-list {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 8px;
             /* Fill available space in sidebar and scroll */
+            flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
             max-height: 100%;
             overscroll-behavior: contain;
             /* Prevent few results from stretching to fill height */
-            align-content: start;
-            align-items: start;
-            grid-auto-rows: max-content;
+            align-items: stretch;
         }
 
         .chat-list-item {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 4px;
             padding: 10px 12px;
             border-radius: 10px;
@@ -1019,16 +1042,17 @@
         }
 
         .chat-thread {
-            display: grid;
-            grid-template-rows: auto 1fr auto;
+            display: flex;
+            flex-direction: column;
             gap: 14px;
             background: var(--log-bg);
             border: 1px solid var(--log-border);
             border-radius: 12px;
             padding: 20px;
-            /* Fill the grid area and allow inner scroll area to control overflow */
+            /* Fill the area and allow inner scroll area to control overflow */
             height: 100%;
             min-height: 0;
+            flex: 1 1 auto;
         }
 
         .chat-thread-header {
@@ -1050,12 +1074,14 @@
 
         .chat-messages {
             overflow-y: auto;
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 12px;
             padding-right: 4px;
-            min-height: 0; /* allow 1fr track to shrink and scroll */
+            min-height: 0; /* allow content area to shrink and scroll */
             max-height: 100%;
             overscroll-behavior: contain;
+            flex: 1 1 auto;
         }
 
         .chat-messages.empty {
@@ -1072,17 +1098,18 @@
         }
 
         .chat-message {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 6px;
             max-width: 88%;
         }
 
         .chat-message.inbound {
-            justify-self: flex-start;
+            align-self: flex-start;
         }
 
         .chat-message.outbound {
-            justify-self: flex-end;
+            align-self: flex-end;
             text-align: right;
         }
 
@@ -1107,7 +1134,8 @@
         }
 
         .chat-composer {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 10px;
         }
 
@@ -1169,6 +1197,9 @@
             background: #2563eb; /* blue-600 */
         }
 
+        /* Prevent background scroll when mobile sidebar is open */
+        body.no-scroll { overflow: hidden; touch-action: none; }
+
         @media (max-width: 720px) {
             body {
                 padding: 18px 12px 36px;
@@ -1184,17 +1215,54 @@
             }
 
             .chat-layout {
-                grid-template-columns: 1fr;
-                /* Keep internal scrollbars but use dynamic viewport height on mobile */
+                flex-direction: column;
+                /* Bound height and keep internal scrollbars like desktop */
                 height: auto;
                 max-height: 80vh; /* fallback */
                 max-height: clamp(320px, 80dvh, 900px);
+                overflow: hidden;
             }
 
             .chat-sidebar {
-                /* keep the sidebar pieces aligned to the top on mobile as well */
+                /* Off-canvas overlay sidebar */
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100dvh;
+                width: min(86vw, 420px);
+                max-width: 92vw;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                z-index: 1001;
+                /* Internal layout alignment */
                 align-content: start;
+                min-width: 0;
+                max-width: none;
+                flex: 0 0 auto;
             }
+
+            /* Dim background when sidebar is open */
+            .chat-panel.mobile-sidebar-open::after {
+                content: '';
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.45);
+                z-index: 1000;
+                pointer-events: auto;
+            }
+
+            /* Slide-in */
+            .chat-panel.mobile-sidebar-open .chat-sidebar { transform: translateX(0); }
+
+            /* Close button inside sidebar */
+            .chat-close-sidebar { display: inline-flex; align-self: flex-end; margin-bottom: 8px; }
+
+            /* Compact header and controls on mobile */
+            .chat-header-actions { gap: 8px; flex-wrap: wrap; }
+            .chat-speed-toggle { display: inline-flex; }
+            .chat-speed-option { padding: 8px 10px; gap: 4px; }
+            .chat-speed-option .chat-speed-label { display: none; }
+            .chat-toggle-sidebar { display: inline-flex; }
 
             .chat-thread {
                 height: 100%;
@@ -1391,11 +1459,13 @@
                                 </button>
                             </div>
                             <button id="chatRefreshBtn" type="button" class="chat-refresh-btn">Refresh</button>
+                            <button id="chatToggleSidebar" type="button" class="chat-toggle-sidebar" aria-controls="chatList">Chats</button>
                         </div>
                     </div>
                     <div id="chatStatus" class="chat-status" role="status" aria-live="polite"></div>
                     <div class="chat-layout">
                         <aside class="chat-sidebar" aria-label="Available chats">
+                            <button id="chatCloseSidebar" type="button" class="chat-close-sidebar" aria-label="Close chat list">Close</button>
                             <div class="chat-search">
                                 <input id="chatSearchInput" type="search" placeholder="Search chats…" autocomplete="off">
                             </div>

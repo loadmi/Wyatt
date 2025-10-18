@@ -151,6 +151,10 @@ class BotController {
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
         this.chatBlendBtn = document.getElementById('chatBlendBtn');
+        this.chatPanel = document.querySelector('.chat-panel');
+        this.chatSidebar = document.querySelector('.chat-sidebar');
+        this.chatToggleSidebarBtn = document.getElementById('chatToggleSidebar');
+        this.chatCloseSidebarBtn = document.getElementById('chatCloseSidebar');
         this.chatListData = [];
         this.filteredChats = [];
         this.activeChatId = null;
@@ -210,6 +214,15 @@ class BotController {
         if (this.chatBlendBtn) {
             this.chatBlendBtn.addEventListener('click', () => this.sendBlendReply());
         }
+        if (this.chatToggleSidebarBtn) {
+            this.chatToggleSidebarBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleMobileSidebar();
+            });
+        }
+        if (this.chatCloseSidebarBtn) {
+            this.chatCloseSidebarBtn.addEventListener('click', () => this.closeMobileSidebar());
+        }
         if (this.chatMessageInput) {
             this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
             // Send on Enter, newline on Shift+Enter
@@ -224,6 +237,28 @@ class BotController {
         if (this.chatMessagesEl) {
             this.chatMessagesEl.addEventListener('scroll', () => this.handleChatScroll());
         }
+        if (this.chatPanel) {
+            // Close when tapping the dimmed overlay (outside the sidebar),
+            // but ignore clicks on the toggle button itself.
+            this.chatPanel.addEventListener('click', (e) => {
+                if (!this.chatPanel.classList.contains('mobile-sidebar-open')) return;
+                const sidebar = this.chatSidebar || document.querySelector('.chat-sidebar');
+                if (!sidebar) return;
+                const clickedToggle = this.chatToggleSidebarBtn && (this.chatToggleSidebarBtn === e.target || this.chatToggleSidebarBtn.contains(e.target));
+                if (clickedToggle) return;
+                if (!sidebar.contains(e.target)) {
+                    this.closeMobileSidebar();
+                }
+            });
+        }
+        // Close mobile sidebar on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeMobileSidebar();
+        });
+        // Ensure sidebar closes when resizing to desktop
+        window.addEventListener('resize', () => {
+            if (!this.isMobile()) this.closeMobileSidebar();
+        });
 
         this.updateChatStatus('Select a chat to preview live messages.', 'info');
         this.updateChatComposerState();
@@ -995,7 +1030,10 @@ class BotController {
             button.dataset.chatId = chat.id;
             button.setAttribute('role', 'option');
             button.title = chat.title || '';
-            button.addEventListener('click', () => this.setActiveChat(chat.id, { triggerFetch: true }));
+            button.addEventListener('click', () => {
+                this.setActiveChat(chat.id, { triggerFetch: true });
+                if (this.isMobile()) this.closeMobileSidebar();
+            });
 
             const titleEl = document.createElement('div');
             titleEl.className = 'chat-list-title';
@@ -1098,6 +1136,44 @@ class BotController {
                 button.title = `Refresh every ${formatted}`;
             }
         });
+    }
+
+    // Mobile helpers
+    isMobile() {
+        try {
+            return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+        } catch {
+            return false;
+        }
+    }
+
+    toggleMobileSidebar() {
+        if (!this.chatPanel) return;
+        const open = !this.chatPanel.classList.contains('mobile-sidebar-open');
+        if (open) {
+            this.openMobileSidebar();
+        } else {
+            this.closeMobileSidebar();
+        }
+    }
+
+    openMobileSidebar() {
+        if (!this.chatPanel) return;
+        this.chatPanel.classList.add('mobile-sidebar-open');
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.add('no-scroll');
+        }
+        if (this.chatSearchInput && this.chatSearchInput.focus) {
+            try { this.chatSearchInput.focus({ preventScroll: true }); } catch {}
+        }
+    }
+
+    closeMobileSidebar() {
+        if (!this.chatPanel) return;
+        this.chatPanel.classList.remove('mobile-sidebar-open');
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.remove('no-scroll');
+        }
     }
 
     setChatRefreshSpeed(speed) {
