@@ -27,7 +27,7 @@ import {
   setActiveTelegramAccount,
 } from "../config";
 import { loadPersistedState } from "../persistence";
-import { availableJsonFiles } from "../llm/personas/personalities";
+import { availableJsonFiles } from "../llm/personalities";
 
 const app: Express = express();
 const PORT = 8080;
