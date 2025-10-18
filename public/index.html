@@ -37,34 +37,45 @@
 
         /* Light theme overrides */
         .theme-light {
-            --bg: #f5f5f5;
-            --text: #333333;
+            /* Base */
+            --bg: #f7f9fc; /* soft neutral with a hint of blue */
+            --text: #0f172a; /* slate-900 */
             --container-bg: #ffffff;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --heading: #1f2937;
-            --subtle: rgba(55, 65, 81, 0.6);
-            --log-bg: #f8f9fa;
-            --log-border: #dee2e6;
+            --shadow: rgba(2, 6, 23, 0.12);
+            --heading: #0f172a;
+            --subtle: #64748b; /* slate-500 for crisp secondary text */
+
+            /* Surfaces */
+            --log-bg: #f3f6fb; /* light panel for side areas */
+            --log-border: #e2e8f0; /* slate-200 */
+
+            /* Actions */
             --btn-text: #ffffff;
-            --button-start-bg: #28a745;
-            --button-start-bg-hover: #218838;
-            --button-stop-bg: #dc3545;
-            --button-stop-bg-hover: #c82333;
-            --status-running-bg: #d4edda;
-            --status-running-text: #155724;
-            --status-running-border: #c3e6cb;
-            --status-stopped-bg: #f8d7da;
-            --status-stopped-text: #721c24;
-            --status-stopped-border: #f5c6cb;
-            --warning-bg: #fff3cd;
-            --warning-text: #856404;
-            --warning-border: #ffeaa7;
-            --tab-bg: rgba(15, 23, 42, 0.06);
-            --tab-active-bg: rgba(37, 99, 235, 0.14);
-            --tab-border: rgba(148, 163, 184, 0.4);
+            --button-start-bg: #16a34a; /* green-600 */
+            --button-start-bg-hover: #15803d; /* green-700 */
+            --button-stop-bg: #ef4444; /* red-500 */
+            --button-stop-bg-hover: #dc2626; /* red-600 */
+
+            /* Status chips */
+            --status-running-bg: #eafaf0; /* soft green bg */
+            --status-running-text: #166534; /* green-700 */
+            --status-running-border: #bbf7d0; /* green-200 */
+            --status-stopped-bg: #fdf2f2; /* soft red bg */
+            --status-stopped-text: #b91c1c; /* red-700 */
+            --status-stopped-border: #fecaca; /* red-200 */
+
+            /* Notices */
+            --warning-bg: #fff7ed; /* amber-50 */
+            --warning-text: #a16207; /* amber-700 */
+            --warning-border: #fde68a; /* amber-300 */
+
+            /* Tabs and subtle blocks */
+            --tab-bg: #f3f6fb; /* match light panels */
+            --tab-active-bg: #e7effe; /* blue-50 */
+            --tab-border: #d6dde8; /* light cool border */
         }
 
-        /* Light theme readability tweaks */
+        /* Light theme readability + contrast tweaks */
         .theme-light .account-card-tag {
             background-color: rgba(37, 99, 235, 0.12);
             color: #1e40af; /* blue-800 for contrast on light bg */
@@ -73,6 +84,23 @@
         .theme-light .account-card.active .account-card-tag {
             background-color: rgba(34, 197, 94, 0.16);
             color: #166534; /* green-700 for contrast on light bg */
+        }
+
+        /* Make cards pop a bit more in light mode */
+        .theme-light .panel-card {
+            border-color: var(--tab-border);
+            box-shadow: 0 8px 24px -12px rgba(2, 6, 23, 0.14), 0 2px 8px -2px rgba(2, 6, 23, 0.06);
+        }
+
+        /* Higher-contrast utility buttons in account list */
+        .theme-light .account-actions button {
+            background: var(--tab-bg);
+            border-color: var(--tab-border);
+        }
+
+        /* Softer toggle track for light mode */
+        .theme-light .slider {
+            background-color: #cbd5e1; /* slate-300 */
         }
 
         * {
