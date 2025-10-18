@@ -262,6 +262,7 @@
             background: var(--tab-bg);
             border: 1px solid var(--tab-border);
             overflow-x: auto;
+            justify-content: space-evenly;
         }
 
         .tab-button {
@@ -274,6 +275,23 @@
             border-radius: 10px;
             cursor: pointer;
             transition: background 0.2s ease, color 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            justify-content: center;
+            min-width: 0;
+        }
+
+        .tab-icon {
+            font-size: 1.1em;
+            flex-shrink: 0;
+        }
+
+        .tab-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .tab-button[aria-selected="true"] {
@@ -1242,6 +1260,26 @@
                 justify-content: flex-end;
             }
 
+            /* Mobile navigation - icon only */
+            .tab-button {
+                padding: 12px 8px;
+                flex: 1;
+                min-width: 60px;
+            }
+
+            .tab-text {
+                display: none;
+            }
+
+            .tab-icon {
+                font-size: 1.3em;
+            }
+
+            .tab-bar {
+                gap: 4px;
+                padding: 8px 4px;
+            }
+
             .chat-layout {
                 flex-direction: column;
                 /* Bound height and keep internal scrollbars like desktop */
@@ -1336,15 +1374,30 @@
 
         <nav class="tab-bar" role="tablist" aria-label="Dashboard sections">
             <button id="tab-overview" class="tab-button" type="button" role="tab" aria-selected="true"
-                aria-controls="panel-overview" data-tab="overview">Overview</button>
+                aria-controls="panel-overview" data-tab="overview">
+                <span class="tab-icon" aria-hidden="true">📊</span>
+                <span class="tab-text">Overview</span>
+            </button>
             <button id="tab-configuration" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">Configuration</button>
+                aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">
+                <span class="tab-icon" aria-hidden="true">⚙️</span>
+                <span class="tab-text">Configuration</span>
+            </button>
             <button id="tab-chats" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-chats" tabindex="-1" data-tab="chats">Chats</button>
+                aria-controls="panel-chats" tabindex="-1" data-tab="chats">
+                <span class="tab-icon" aria-hidden="true">💬</span>
+                <span class="tab-text">Chats</span>
+            </button>
             <button id="tab-metrics" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-metrics" tabindex="-1" data-tab="metrics">Metrics</button>
+                aria-controls="panel-metrics" tabindex="-1" data-tab="metrics">
+                <span class="tab-icon" aria-hidden="true">📈</span>
+                <span class="tab-text">Metrics</span>
+            </button>
             <button id="tab-activity" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-activity" tabindex="-1" data-tab="activity">Activity</button>
+                aria-controls="panel-activity" tabindex="-1" data-tab="activity">
+                <span class="tab-icon" aria-hidden="true">📋</span>
+                <span class="tab-text">Activity</span>
+            </button>
         </nav>
 
         <main class="tab-panels">
