@@ -1858,38 +1858,21 @@ class BotController {
     }
 
     refreshChartTheme() {
-        const colors = this.getThemeColors();
+        // Destroy existing charts to avoid Chart.js configuration proxy issues
         if (this.timelineChart) {
-            const inboundDataset = this.timelineChart.data.datasets[0];
-            const outboundDataset = this.timelineChart.data.datasets[1];
-            inboundDataset.borderColor = colors.inbound;
-            inboundDataset.backgroundColor = withAlpha(colors.inbound, 0.25);
-            outboundDataset.borderColor = colors.outbound;
-            outboundDataset.backgroundColor = withAlpha(colors.outbound, 0.25);
-
-            if (this.timelineChart.options?.scales?.x) {
-                this.timelineChart.options.scales.x.ticks = this.timelineChart.options.scales.x.ticks || {};
-                this.timelineChart.options.scales.x.ticks.color = colors.text;
-                this.timelineChart.options.scales.x.grid = this.timelineChart.options.scales.x.grid || {};
-                this.timelineChart.options.scales.x.grid.color = withAlpha(colors.border, 0.4);
-            }
-            if (this.timelineChart.options?.scales?.y) {
-                this.timelineChart.options.scales.y.ticks = this.timelineChart.options.scales.y.ticks || {};
-                this.timelineChart.options.scales.y.ticks.color = colors.text;
-                this.timelineChart.options.scales.y.grid = this.timelineChart.options.scales.y.grid || {};
-                this.timelineChart.options.scales.y.grid.color = withAlpha(colors.border, 0.4);
-            }
-            if (this.timelineChart.options?.plugins?.legend?.labels) {
-                this.timelineChart.options.plugins.legend.labels.color = colors.text;
-            }
-            this.timelineChart.update('none');
+            this.timelineChart.destroy();
+            this.timelineChart = null;
         }
         if (this.providerChart) {
-            if (this.providerChart.options?.plugins?.legend?.labels) {
-                this.providerChart.options.plugins.legend.labels.color = colors.text;
-            }
-            this.providerChart.update('none');
+            this.providerChart.destroy();
+            this.providerChart = null;
         }
+
+        // Reinitialize charts with new theme colors
+        this.initializeCharts();
+
+        // Refresh data in the new charts
+        this.refreshMetrics();
     }
 
     // Ensure model and key rows reflect provider selection
