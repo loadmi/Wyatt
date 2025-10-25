@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
+import { ensureChatPersonaRecord } from "./chatPersonality";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -400,6 +401,8 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // Wake up routine: check if bot has been inactive and needs to wake up
   const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
+  const peerKey = toIdStringSafe(message?.peerId);
+  const conversationKey = chatId ?? peerKey ?? senderIdString;
   const needsWakeUp = shouldWakeUp(senderIdString, chatId);
 
   if (needsWakeUp) {
@@ -417,15 +420,28 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   let context: ContextEntry[] = [];
   try {
     if (inputPeer) {
-      context = await fetchFullHistory(client, inputPeer, senderIdString);
+      context = await fetchFullHistory(client, inputPeer, conversationKey);
     }
   } catch (e) {
     console.error("Failed to build context:", e);
   }
 
+  let personaPrompt = appConfig().systemPrompt;
+  try {
+    const personaRecord = await ensureChatPersonaRecord(conversationKey);
+    if (personaRecord?.systemPrompt?.trim()) {
+      personaPrompt = personaRecord.systemPrompt;
+    }
+  } catch (error) {
+    console.warn(
+      `Falling back to default persona for chat ${conversationKey}:`,
+      (error as any)?.message || error,
+    );
+  }
+
   let llmContext: LLMContextEntry[] = [];
-  // console.log("System Prompt:", appConfig().systemPrompt);
-  llmContext = convertContextToLLM(context, appConfig().systemPrompt);
+  // console.log("System Prompt:", personaPrompt);
+  llmContext = convertContextToLLM(context, personaPrompt);
 
 
  // console.log("Context:", llmContext);

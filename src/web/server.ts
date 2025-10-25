@@ -28,6 +28,10 @@ import {
 } from "../config";
 import { loadPersistedState } from "../persistence";
 import { availableJsonFiles } from "../llm/personalities";
+import {
+  updateChatPersona as setChatPersonaForChat,
+  resetChatPersonaToDefault as resetChatPersonaForChat,
+} from "../telegram/chatPersonality";
 
 const app: Express = express();
 const PORT = 8080;
@@ -252,6 +256,53 @@ export function startWebServer(): void {
           ? 404
           : 400;
     res.status(status).json(result);
+  });
+
+  app.post("/api/chats/:chatId/personality", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const personaRaw = (req.body || {}).persona;
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    const personaId = typeof personaRaw === "string" ? personaRaw.trim() : personaRaw != null ? String(personaRaw).trim() : "";
+    if (!personaId) {
+      return res.status(400).json({ success: false, message: "Persona identifier is required." });
+    }
+
+    try {
+      const { summary } = await setChatPersonaForChat(chatId, personaId);
+      res.json({
+        success: true,
+        message: `Chat persona updated to ${summary.personaLabel}.`,
+        persona: summary,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update chat persona.";
+      const lowered = message.toLowerCase();
+      const status = lowered.includes("persona") || lowered.includes("available") ? 400 : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.delete("/api/chats/:chatId/personality", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    try {
+      const { summary } = await resetChatPersonaForChat(chatId);
+      res.json({
+        success: true,
+        message: `Chat persona reset to ${summary.personaLabel}.`,
+        persona: summary,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to reset chat persona.";
+      res.status(500).json({ success: false, message });
+    }
   });
 
   app.post("/api/chats/:chatId/blend", async (req: Request, res: Response) => {
