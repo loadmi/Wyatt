@@ -1118,6 +1118,98 @@
             color: var(--subtle);
         }
 
+        .chat-thread-heading {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .chat-persona-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .chat-persona-controls label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--subtle);
+        }
+
+        .chat-persona-controls select {
+            min-width: 160px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            border: 1px solid var(--log-border);
+            background: var(--container-bg);
+            color: var(--text);
+        }
+
+        .chat-persona-controls select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .chat-persona-reset {
+            border: 1px solid var(--log-border);
+            background: transparent;
+            color: var(--subtle);
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .chat-persona-reset:not(:disabled):hover {
+            background: rgba(148, 163, 184, 0.12);
+        }
+
+        .chat-persona-reset:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chat-persona-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(59, 130, 246, 0.18);
+            color: rgba(191, 219, 254, 0.95);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .chat-persona-badge[data-variant="custom"] {
+            background: rgba(236, 72, 153, 0.22);
+            color: #fbcfe8;
+        }
+
+        .chat-persona-badge[hidden] {
+            display: none;
+        }
+
+        .chat-list-persona {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(96, 165, 250, 0.18);
+            color: rgba(191, 219, 254, 0.95);
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .chat-list-persona[data-variant="custom"] {
+            background: rgba(236, 72, 153, 0.22);
+            color: #fbcfe8;
+        }
+
         .chat-messages {
             overflow-y: auto;
             display: flex;
@@ -1555,8 +1647,18 @@
                         </aside>
                         <section class="chat-thread" aria-live="polite">
                             <div class="chat-thread-header">
-                                <h3 id="chatActiveTitle">Pick a chat to preview</h3>
-                                <span id="chatActiveMeta" class="chat-thread-meta">Messages will appear here in real time.</span>
+                                <div class="chat-thread-heading">
+                                    <h3 id="chatActiveTitle">Pick a chat to preview</h3>
+                                    <span id="chatActiveMeta" class="chat-thread-meta">Messages will appear here in real time.</span>
+                                </div>
+                                <div class="chat-persona-controls">
+                                    <span id="chatPersonaBadge" class="chat-persona-badge" hidden>Persona · Default</span>
+                                    <label for="chatPersonaSelect">Persona</label>
+                                    <select id="chatPersonaSelect" disabled>
+                                        <option value="">Loading personas…</option>
+                                    </select>
+                                    <button id="chatPersonaResetBtn" type="button" class="chat-persona-reset" disabled>Reset to default</button>
+                                </div>
                             </div>
                             <div id="chatMessages" class="chat-messages" aria-busy="false"></div>
                             <form id="chatComposer" class="chat-composer">
