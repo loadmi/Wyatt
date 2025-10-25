@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Define the directory path
-const directoryPath = path.resolve(__dirname);
+const directoryPath = path.join(__dirname, 'personas');
 
 // Function to get all JSON files from the directory
 function getJsonFiles(): string[] {
