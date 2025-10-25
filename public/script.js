@@ -69,6 +69,17 @@ function formatRelativeTime(timestamp) {
     return `${days}d ago`;
 }
 
+function formatPersonaName(personaId) {
+    if (!personaId || typeof personaId !== 'string') {
+        return 'Custom personality';
+    }
+    const base = personaId.replace(/\.json$/i, '').replace(/[-_]+/g, ' ').trim();
+    if (!base) {
+        return personaId;
+    }
+    return base.replace(/\b([a-z])/gi, (match) => match.toUpperCase());
+}
+
 class BotController {
     constructor() {
         this.startBtn = document.getElementById('startBtn');
@@ -137,6 +148,7 @@ class BotController {
         this._accountNoticeTimer = null;
         this._loginPollInterval = null;
         this._loginPollBusy = false;
+        this.availablePersonas = [];
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
@@ -151,6 +163,9 @@ class BotController {
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
         this.chatBlendBtn = document.getElementById('chatBlendBtn');
+        this.chatPersonaSelect = document.getElementById('chatPersonaSelect');
+        this.chatPersonaStatus = document.getElementById('chatPersonaStatus');
+        this.chatPersonaSummary = document.getElementById('chatPersonaSummary');
         this.chatPanel = document.querySelector('.chat-panel');
         this.chatSidebar = document.querySelector('.chat-sidebar');
         this.chatToggleSidebarBtn = document.getElementById('chatToggleSidebar');
@@ -167,6 +182,7 @@ class BotController {
         this.chatAutoScroll = true;
         this.chatSearchTerm = '';
         this._chatStatusTimer = null;
+        this._chatPersonaStatusTimer = null;
         this.chatRenderCache = new Map();
         this.currentTab = 'overview';
         this.chatRefreshRates = {
@@ -200,6 +216,9 @@ class BotController {
                     this.setChatRefreshSpeed(speed);
                 });
             });
+        }
+        if (this.chatPersonaSelect) {
+            this.chatPersonaSelect.addEventListener('change', () => this.changeChatPersonality());
         }
         this.updateChatSpeedToggleUI();
         if (this.chatSearchInput) {
@@ -395,6 +414,7 @@ class BotController {
             const data = await response.json();
 
             if (data.available && Array.isArray(data.available)) {
+                this.availablePersonas = data.available.slice();
                 // Clear the dropdown
                 this.personaSelect.innerHTML = '';
 
@@ -418,9 +438,13 @@ class BotController {
                     this.changePersona();
                 }
 
+                this.populateChatPersonaSelect();
+                this.updateChatPersonaControls(null);
                 this.log('Personalities loaded successfully');
             } else {
                 this.log('Error: No personalities available');
+                this.availablePersonas = [];
+                this.populateChatPersonaSelect();
             }
         } catch (error) {
             this.log('❌ Error loading personalities: ' + error.message);
@@ -977,6 +1001,7 @@ class BotController {
             this.chatTitleEl.textContent = 'Pick a chat to preview';
             this.chatMetaEl.textContent = 'Messages will appear here in real time.';
             this.chatMetaEl.removeAttribute('title');
+            this.updateChatPersonaControls(null);
             return;
         }
         const typeLabel = chat.type === 'private'
@@ -992,6 +1017,7 @@ class BotController {
             this.chatMetaEl.textContent = `${typeLabel} · Live conversation`;
             this.chatMetaEl.removeAttribute('title');
         }
+        this.updateChatPersonaControls(chat.personality || null);
     }
 
     applyChatFilter() {
@@ -1003,7 +1029,8 @@ class BotController {
             this.filteredChats = this.chatListData.slice();
         } else {
             this.filteredChats = this.chatListData.filter(chat => {
-                const haystack = `${chat.title || ''} ${chat.lastMessage || ''}`.toLowerCase();
+                const personaLabel = chat.personality && chat.personality.personaLabel ? chat.personality.personaLabel : '';
+                const haystack = `${chat.title || ''} ${chat.lastMessage || ''} ${personaLabel}`.toLowerCase();
                 return haystack.includes(term);
             });
         }
@@ -1043,6 +1070,33 @@ class BotController {
             snippetEl.className = 'chat-list-snippet';
             snippetEl.textContent = chat.lastMessage || 'No messages yet';
 
+            const personaEl = document.createElement('div');
+            personaEl.className = 'chat-list-persona';
+            const personaInfo = chat.personality || null;
+            if (personaInfo) {
+                const label = personaInfo.personaLabel || formatPersonaName(personaInfo.personaId);
+                const usage = Number(personaInfo.usageCount);
+                const lastUsed = Number(personaInfo.lastUsedAt);
+                const assigned = Number(personaInfo.assignedAt);
+                const pieces = [label];
+                if (Number.isFinite(usage) && usage > 0) {
+                    pieces.push(`${usage} ${usage === 1 ? 'reply' : 'replies'}`);
+                }
+                if (Number.isFinite(lastUsed)) {
+                    pieces.push(`↺ ${formatRelativeTime(lastUsed)}`);
+                } else if (Number.isFinite(assigned)) {
+                    pieces.push(`↺ assigned ${formatRelativeTime(assigned)}`);
+                }
+                personaEl.textContent = pieces.join(' · ');
+                if (Number.isFinite(lastUsed)) {
+                    personaEl.title = `Last auto reply ${new Date(lastUsed).toLocaleString()}`;
+                } else if (Number.isFinite(assigned)) {
+                    personaEl.title = `Assigned ${new Date(assigned).toLocaleString()}`;
+                }
+            } else {
+                personaEl.textContent = 'Default personality';
+            }
+
             const metaEl = document.createElement('div');
             metaEl.className = 'chat-list-meta';
 
@@ -1069,6 +1123,7 @@ class BotController {
 
             button.appendChild(titleEl);
             button.appendChild(snippetEl);
+            button.appendChild(personaEl);
             if (metaEl.childNodes.length > 0) {
                 button.appendChild(metaEl);
             }
@@ -1361,6 +1416,7 @@ class BotController {
                     lastTimestamp: Array.isArray(data.messages) && data.messages.length > 0
                         ? data.messages[data.messages.length - 1].timestamp
                         : undefined,
+                    personality: data.chat.personality || data.personality || null,
                 };
                 this.updateActiveChatHeader(headerMeta);
             }
@@ -1460,6 +1516,154 @@ class BotController {
             this.chatAutoScroll = true;
         } else {
             this.chatAutoScroll = false;
+        }
+    }
+
+    populateChatPersonaSelect() {
+        if (!this.chatPersonaSelect) return;
+        const select = this.chatPersonaSelect;
+        const personas = Array.isArray(this.availablePersonas) ? this.availablePersonas : [];
+        const previous = select.value;
+        select.innerHTML = '';
+
+        if (personas.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No personalities available';
+            option.disabled = true;
+            option.selected = true;
+            select.appendChild(option);
+            select.disabled = true;
+            return;
+        }
+
+        personas.forEach(persona => {
+            const option = document.createElement('option');
+            option.value = persona;
+            option.textContent = formatPersonaName(persona);
+            select.appendChild(option);
+        });
+
+        if (previous && personas.includes(previous)) {
+            select.value = previous;
+        } else {
+            const globalDefault = this.personaSelect ? this.personaSelect.value : personas[0];
+            if (globalDefault && personas.includes(globalDefault)) {
+                select.value = globalDefault;
+            }
+        }
+
+        select.disabled = !this.activeChatId;
+    }
+
+    renderChatPersonaSummary(personality) {
+        if (!this.chatPersonaSummary) return;
+        if (!this.activeChatId) {
+            this.chatPersonaSummary.textContent = 'Select a chat to manage its personality.';
+            return;
+        }
+        if (!personality) {
+            const fallback = this.personaSelect ? this.personaSelect.value : '';
+            const label = formatPersonaName(fallback);
+            this.chatPersonaSummary.textContent = label ? `Using default personality (${label}).` : 'Using default personality.';
+            return;
+        }
+        const parts = [];
+        const label = personality.personaLabel || formatPersonaName(personality.personaId);
+        parts.push(label);
+        const usage = Number(personality.usageCount);
+        if (Number.isFinite(usage) && usage > 0) {
+            parts.push(`${usage} ${usage === 1 ? 'auto reply' : 'auto replies'}`);
+        } else {
+            parts.push('No auto replies yet');
+        }
+        if (Number.isFinite(personality.lastUsedAt)) {
+            parts.push(`Last reply ${formatRelativeTime(personality.lastUsedAt)}`);
+        } else if (Number.isFinite(personality.assignedAt)) {
+            parts.push(`Assigned ${formatRelativeTime(personality.assignedAt)}`);
+        }
+        this.chatPersonaSummary.textContent = parts.join(' · ');
+    }
+
+    updateChatPersonaControls(personality) {
+        if (!this.chatPersonaSelect) return;
+        if (this.chatPersonaSelect.options.length === 0) {
+            this.populateChatPersonaSelect();
+        }
+        const personas = Array.isArray(this.availablePersonas) ? this.availablePersonas : [];
+        if (personality && personality.personaId && personas.includes(personality.personaId)) {
+            this.chatPersonaSelect.value = personality.personaId;
+        } else if (this.activeChatId && personas.length > 0) {
+            const globalDefault = this.personaSelect ? this.personaSelect.value : personas[0];
+            if (globalDefault && personas.includes(globalDefault)) {
+                this.chatPersonaSelect.value = globalDefault;
+            } else {
+                this.chatPersonaSelect.value = personas[0];
+            }
+        }
+
+        this.chatPersonaSelect.disabled = !this.activeChatId || personas.length === 0;
+        this.renderChatPersonaSummary(personality || null);
+    }
+
+    async changeChatPersonality() {
+        if (!this.chatPersonaSelect || !this.activeChatId) {
+            return;
+        }
+        const personaId = this.chatPersonaSelect.value;
+        if (!personaId) {
+            return;
+        }
+
+        if (this._chatPersonaStatusTimer) {
+            clearTimeout(this._chatPersonaStatusTimer);
+            this._chatPersonaStatusTimer = null;
+        }
+        if (this.chatPersonaStatus) {
+            this.chatPersonaStatus.textContent = 'Saving…';
+            this.chatPersonaStatus.hidden = false;
+        }
+
+        const chatId = this.activeChatId;
+        try {
+            this.chatPersonaSelect.disabled = true;
+            const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/personality`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ persona: personaId }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || `Failed to update personality (${response.status})`);
+            }
+
+            const personality = data.personality || null;
+            this.updateChatStatus('Personality saved for chat.', 'success', { autoClear: true });
+            this.updateChatPersonaControls(personality);
+            await this.loadChats({ silent: true, preserveActive: true, force: true });
+            await this.refreshActiveChat({ silent: true, force: true });
+
+            if (this.chatPersonaStatus) {
+                this.chatPersonaStatus.textContent = 'Saved';
+                this.chatPersonaStatus.hidden = false;
+            }
+        } catch (error) {
+            if (this.chatPersonaStatus) {
+                this.chatPersonaStatus.textContent = 'Failed';
+                this.chatPersonaStatus.hidden = false;
+            }
+            const message = error && error.message ? error.message : 'Failed to update personality.';
+            this.updateChatStatus(message, 'error');
+        } finally {
+            const personas = Array.isArray(this.availablePersonas) ? this.availablePersonas : [];
+            if (this.chatPersonaSelect) {
+                this.chatPersonaSelect.disabled = !this.activeChatId || personas.length === 0;
+            }
+            this._chatPersonaStatusTimer = setTimeout(() => {
+                if (this.chatPersonaStatus) {
+                    this.chatPersonaStatus.hidden = true;
+                }
+            }, 2400);
         }
     }
 

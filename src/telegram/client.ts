@@ -11,6 +11,8 @@ import { botStarted, botStopped } from "../metrics";
 import { generateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
+import { ensureChatPersonality } from "./chatPersonality";
+import type { ChatPersonalityDescriptor } from "./chatPersonality";
 
 let client: TelegramClient;
 let isRunning = false;
@@ -42,6 +44,7 @@ export type DashboardChatSummary = {
   lastMessage?: string;
   lastTimestamp?: number;
   unreadCount?: number;
+  personality?: ChatPersonalityDescriptor;
 };
 
 export type DashboardChatMessage = {
@@ -53,8 +56,9 @@ export type DashboardChatMessage = {
 };
 
 export type DashboardChatHistory = {
-  chat: { id: string; title: string; type: ChatCacheEntry["type"] };
+  chat: { id: string; title: string; type: ChatCacheEntry["type"]; personality?: ChatPersonalityDescriptor };
   messages: DashboardChatMessage[];
+  personality?: ChatPersonalityDescriptor;
 };
 
 const chatCache = new Map<string, ChatCacheEntry>();
@@ -539,6 +543,9 @@ export async function listChats(): Promise<DashboardChatSummary[]> {
     if (unreadTotal > 0) {
       summary.unreadCount = unreadTotal;
     }
+    const ensured = ensureChatPersonality(key);
+    const { systemPrompt: _systemPrompt, ...descriptor } = ensured;
+    summary.personality = descriptor;
     summaries.push(summary);
   }
 
@@ -566,6 +573,9 @@ export async function getChatHistory(chatId: string, limit = 150): Promise<Dashb
   if (!entry) {
     throw new Error("Chat not found or not accessible.");
   }
+
+  const ensured = ensureChatPersonality(chatId);
+  const { systemPrompt: _systemPrompt, ...descriptor } = ensured;
 
   const messages: DashboardChatMessage[] = [];
   try {
@@ -605,8 +615,9 @@ export async function getChatHistory(chatId: string, limit = 150): Promise<Dashb
   });
 
   return {
-    chat: { id: chatId, title: entry.title, type: entry.type },
+    chat: { id: chatId, title: entry.title, type: entry.type, personality: descriptor },
     messages,
+    personality: descriptor,
   };
 }
 

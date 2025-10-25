@@ -28,6 +28,7 @@ import {
 } from "../config";
 import { loadPersistedState } from "../persistence";
 import { availableJsonFiles } from "../llm/personalities";
+import { updateChatPersonality } from "../telegram/chatPersonality";
 
 const app: Express = express();
 const PORT = 8080;
@@ -270,6 +271,40 @@ export function startWebServer(): void {
           ? 404
           : 400;
     res.status(status).json(result);
+  });
+
+  app.put("/api/chats/:chatId/personality", async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { persona } = req.body || {};
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "Chat ID is required." });
+    }
+
+    const personaId = typeof persona === "string" ? persona.trim() : "";
+    if (!personaId) {
+      return res.status(400).json({ success: false, message: "Persona is required." });
+    }
+
+    if (!availableJsonFiles.includes(personaId)) {
+      return res.status(400).json({ success: false, message: "Invalid persona." });
+    }
+
+    try {
+      const importedPersona = await import(`../llm/personas/${personaId}`, { with: { type: "json" } }).then((mod) => mod.default);
+      const systemPrompt = JSON.stringify(importedPersona);
+      const personaLabel =
+        typeof importedPersona?.character_name === "string" && importedPersona.character_name.trim().length > 0
+          ? importedPersona.character_name.trim()
+          : undefined;
+
+      const updated = updateChatPersonality(chatId, { personaId, personaLabel, systemPrompt });
+      const { systemPrompt: _ignored, ...descriptor } = updated;
+      res.json({ success: true, personality: descriptor });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update chat personality.";
+      res.status(500).json({ success: false, message });
+    }
   });
 
   app.post("/api/start", async (req: Request, res: Response) => {

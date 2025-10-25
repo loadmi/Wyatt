@@ -1048,6 +1048,12 @@
             text-overflow: ellipsis;
         }
 
+        .chat-list-persona {
+            font-size: 0.75rem;
+            color: var(--subtle);
+            margin-top: 2px;
+        }
+
         .chat-list-meta {
             font-size: 0.75rem;
             color: var(--subtle);
@@ -1115,6 +1121,51 @@
 
         .chat-thread-meta {
             font-size: 0.85rem;
+            color: var(--subtle);
+        }
+
+        .chat-persona-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .chat-persona-controls label {
+            font-size: 0.7rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--subtle);
+        }
+
+        .chat-persona-controls select {
+            appearance: none;
+            background: var(--container-bg);
+            border: 1px solid var(--tab-border);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            min-width: 160px;
+        }
+
+        .chat-persona-controls select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chat-persona-status {
+            font-size: 0.8rem;
+            color: var(--subtle);
+        }
+
+        .chat-persona-status[hidden] {
+            display: none;
+        }
+
+        .chat-persona-summary {
+            font-size: 0.8rem;
             color: var(--subtle);
         }
 
@@ -1557,6 +1608,12 @@
                             <div class="chat-thread-header">
                                 <h3 id="chatActiveTitle">Pick a chat to preview</h3>
                                 <span id="chatActiveMeta" class="chat-thread-meta">Messages will appear here in real time.</span>
+                                <div class="chat-persona-controls">
+                                    <label for="chatPersonaSelect">Personality</label>
+                                    <select id="chatPersonaSelect" disabled></select>
+                                    <span id="chatPersonaStatus" class="chat-persona-status" hidden>Saved</span>
+                                </div>
+                                <div id="chatPersonaSummary" class="chat-persona-summary">Select a chat to manage its personality.</div>
                             </div>
                             <div id="chatMessages" class="chat-messages" aria-busy="false"></div>
                             <form id="chatComposer" class="chat-composer">
