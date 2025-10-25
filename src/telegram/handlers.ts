@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
+import { ensureChatPersonality, recordChatPersonalityUsage } from "./chatPersonality";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -400,6 +401,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // Wake up routine: check if bot has been inactive and needs to wake up
   const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
+  const chatKey = (chatIdRaw && chatIdRaw.trim()) || senderIdString;
   const needsWakeUp = shouldWakeUp(senderIdString, chatId);
 
   if (needsWakeUp) {
@@ -424,8 +426,12 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   }
 
   let llmContext: LLMContextEntry[] = [];
-  // console.log("System Prompt:", appConfig().systemPrompt);
-  llmContext = convertContextToLLM(context, appConfig().systemPrompt);
+  const personality = ensureChatPersonality(chatKey);
+  const systemPrompt =
+    (personality?.systemPrompt && personality.systemPrompt.trim().length > 0)
+      ? personality.systemPrompt
+      : appConfig().systemPrompt;
+  llmContext = convertContextToLLM(context, systemPrompt);
 
 
  // console.log("Context:", llmContext);
@@ -516,6 +522,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
     // Update last interaction time after successful response
     updateLastInteraction(senderIdString, chatId);
+    recordChatPersonalityUsage(chatKey);
   } catch (error) {
     console.error("Failed to send message:", error);
 
