@@ -12,7 +12,7 @@ import { generateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
 import { getChatPersonaSummary } from "./chatPersonality";
-import { toIdString, toStableChatKey } from "./idUtils";
+import { toStableChatKey } from "./idUtils";
 
 let client: TelegramClient;
 let isRunning = false;

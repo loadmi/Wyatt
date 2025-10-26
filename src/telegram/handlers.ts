@@ -1,13 +1,12 @@
 // src/telegram/handlers.ts
-import { NewMessage, NewMessageEvent } from "telegram/events";
+import { NewMessageEvent } from "telegram/events";
 import { Api } from "telegram";
-import { Button } from "telegram/tl/custom/button";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse, getSuggestedReplies } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
-import { toIdString, toStableChatKey } from "./idUtils";
+import { toIdString } from "./idUtils";
 import { sanitizeMessageText } from "../utils/logSanitizer";
 
 
