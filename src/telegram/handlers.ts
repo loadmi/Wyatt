@@ -610,6 +610,38 @@ async function sendImmediateReply(params: {
   return false;
 }
 
+function formatRecentHistory(context: LLMContextEntry[], maxExchanges: number = 3): string {
+  // Filter out system messages and get actual conversation
+  const messages = context.filter(m => m.role !== "system");
+  
+  if (messages.length === 0) {
+    return "";
+  }
+  
+  // Exclude the last message (current incoming message) to avoid duplication
+  // Show the messages BEFORE the current one for context
+  const messagesBeforeCurrent = messages.slice(0, -1);
+  
+  if (messagesBeforeCurrent.length === 0) {
+    return "";
+  }
+  
+  // Get last N exchanges (each exchange is 2 messages: user + assistant)
+  const totalToShow = Math.min(maxExchanges * 2, messagesBeforeCurrent.length);
+  const recent = messagesBeforeCurrent.slice(-totalToShow);
+  
+  // Format each message compactly
+  const formatted = recent.map(msg => {
+    const icon = msg.role === "user" ? "👤" : "🤖";
+    const text = msg.content.length > 80
+      ? `${msg.content.slice(0, 77)}...`
+      : msg.content;
+    return `${icon} ${text}`;
+  }).join("\n");
+  
+  return formatted;
+}
+
 async function getSenderDisplayName(message: any): Promise<string> {
   try {
     const sender = await message.getSender?.();
@@ -709,6 +741,12 @@ async function attemptHumanOverride(params: {
   const prettyDelay = Math.max(1, Math.round(wakeUpDelay / 1000));
   const overrideId = `wake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   
+  // Extract persona information
+  const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
+  
+  // Format recent conversation history
+  const recentHistory = formatRecentHistory(llmContext, 3);
+  
   // Create a clear, tappable message format with emoji buttons
   const suggestionLines = suggestions.map((entry, idx) => {
     const emoji = ['1️⃣', '2️⃣', '3️⃣'][idx] || `${idx + 1}️⃣`;
@@ -720,11 +758,28 @@ async function attemptHumanOverride(params: {
     ? `${senderName} (\`${senderIdString}\`)`
     : `\`${senderIdString}\``;
   
-  const notification = [
+  // Build notification with context sections
+  const notificationParts = [
     `🔔 **WAKE-UP REQUEST**`,
     ``,
+    `🎭 Active Persona: **${personaLabel}**`,
     `👤 Contact: ${contactInfo}${chatId ? ` · Chat ${chatId}` : ""}`,
-    `💬 Message: "${truncatedMessage}"`,
+  ];
+  
+  // Add recent conversation history if available
+  if (recentHistory) {
+    notificationParts.push(
+      ``,
+      `📝 **Recent Context:**`,
+      recentHistory
+    );
+  }
+  
+  // Add current message and options
+  notificationParts.push(
+    ``,
+    `💬 **Current Message:**`,
+    truncatedMessage,
     ``,
     `━━━━━━━━━━━━━━━━`,
     `📝 **Quick Reply Options:**`,
@@ -737,8 +792,10 @@ async function attemptHumanOverride(params: {
     `**To respond:**`,
     `• Type **1**, **2**, or **3** to select an option`,
     `• Type **ignore** to skip`,
-    `• Or send your own custom message`,
-  ].join("\n");
+    `• Or send your own custom message`
+  );
+  
+  const notification = notificationParts.join("\n");
 
   let sent: any;
   try {
