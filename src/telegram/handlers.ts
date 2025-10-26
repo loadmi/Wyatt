@@ -1381,7 +1381,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       startedAt: composeStartedAt,
       personaRecord,
     });
-    // TODO: Add logic to delete or end chat in some cases
   } catch (error) {
     // Critical error handler: log comprehensive error details and continue bot operation
     const errorMessage = error instanceof Error ? error.message : String(error);
