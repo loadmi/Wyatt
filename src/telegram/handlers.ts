@@ -20,9 +20,11 @@ type ContextEntry = {
 const historyCache = new Map<string, ContextEntry[]>();
 
 const FALLBACK_SUGGESTIONS = [
-  "Oh goodness, that's quite something—should I keep them chatting?",
-  "Let me play along a bit—how about I ask for more details?",
-  "I can stall them a little longer. Want me to stay curious?",
+  { text: "Oh goodness, that's quite something—should I keep them chatting?", emotion: "curious" },
+  { text: "Let me play along a bit—how about I ask for more details?", emotion: "playful" },
+  { text: "I can stall them a little longer. Want me to stay curious?", emotion: "friendly" },
+  { text: "This seems suspicious. Should I be more cautious?", emotion: "skeptical" },
+  { text: "I'm a bit concerned about this. How should I respond?", emotion: "concerned" }
 ];
 
 type HumanOverrideDecision =
@@ -35,7 +37,7 @@ type PendingHumanOverride = {
   humanPeerKey: string;
   humanPeer: any;
   requestMessageId?: number;
-  suggestions: string[];
+  suggestions: Array<{text: string, emotion: string}>;
   createdAt: number;
   expiresAt: number;
   resolved: boolean;
@@ -209,7 +211,7 @@ type ParsedHumanResponse =
   | { kind: "custom"; text: string }
   | { kind: "ignore" };
 
-function parseHumanResponse(raw: string, suggestions: string[]): ParsedHumanResponse | null {
+function parseHumanResponse(raw: string, suggestions: Array<{text: string, emotion: string}>): ParsedHumanResponse | null {
   const text = (raw || "").trim();
   if (!text) return null;
 
@@ -232,8 +234,9 @@ function parseHumanResponse(raw: string, suggestions: string[]): ParsedHumanResp
       const idx = Number(match[1]);
       if (Number.isFinite(idx) && idx >= 1 && idx <= suggestions.length) {
         const suggestion = suggestions[idx - 1];
-        if (typeof suggestion === "string" && suggestion.trim()) {
-          return { kind: "suggestion", index: idx - 1, text: suggestion.trim() };
+        const text = typeof suggestion === 'string' ? suggestion : suggestion.text;
+        if (text && text.trim()) {
+          return { kind: "suggestion", index: idx - 1, text: text.trim() };
         }
       }
     }
@@ -458,7 +461,7 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
   if (!parsed) {
     try {
       await client.sendMessage(override.humanPeer, {
-        message: `Please choose 1-${override.suggestions.length} or type a custom reply to forward.`,
+        message: `Please choose 1-5 or type a custom reply to forward.`,
       });
     } catch { }
     return true;
@@ -717,15 +720,21 @@ async function attemptHumanOverride(params: {
     return false;
   }
 
-  let suggestions: string[] = [];
+  let suggestions: Array<{text: string, emotion: string}> = [];
   try {
-    suggestions = await getSuggestedReplies(llmContext, 3);
+    suggestions = await getSuggestedReplies(llmContext, 5);
   } catch (error) {
     console.warn("Failed to generate wake-up suggestions:", (error as any)?.message || error);
   }
   suggestions = suggestions
-    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => entry.trim());
+    .filter((entry): entry is {text: string, emotion: string} => {
+      if (typeof entry === 'string') return false;
+      return !!(entry?.text && entry.text.trim().length > 0);
+    })
+    .map((entry) => ({
+      text: entry.text.trim(),
+      emotion: entry.emotion || 'friendly'
+    }));
   if (suggestions.length === 0) {
     suggestions = [...FALLBACK_SUGGESTIONS];
   }
@@ -749,8 +758,10 @@ async function attemptHumanOverride(params: {
   
   // Create a clear, tappable message format with emoji buttons
   const suggestionLines = suggestions.map((entry, idx) => {
-    const emoji = ['1️⃣', '2️⃣', '3️⃣'][idx] || `${idx + 1}️⃣`;
-    return `${emoji} **Option ${idx + 1}**\n   ${entry}`;
+    const emoji = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][idx];
+    const text = typeof entry === 'string' ? entry : entry.text;
+    const emotion = typeof entry === 'string' ? '' : ` (${entry.emotion})`;
+    return `${emoji} **Option ${idx + 1}**${emotion}\n   ${text}`;
   }).join("\n\n");
   
   // Format contact info with name if available
@@ -790,7 +801,7 @@ async function attemptHumanOverride(params: {
     `⏰ Reply within **${prettyDelay}s**`,
     ``,
     `**To respond:**`,
-    `• Type **1**, **2**, or **3** to select an option`,
+    `• Type **1**, **2**, **3**, **4**, or **5** to select an option`,
     `• Type **ignore** to skip`,
     `• Or send your own custom message`
   );

@@ -33,29 +33,49 @@ function preview(text: string, max = 180): string {
 }
 
 const SUGGESTION_FALLBACKS = [
-  'Oh wow—shall I ask them for more details?',
-  "That's interesting! Want me to keep them talking?",
-  'Happy to nudge them along—should I sound curious?',
+  { text: "That's interesting—can you tell me more about that?", emotion: "curious" },
+  { text: "Oh my, I'm not sure I understand. Could you explain?", emotion: "confused" },
+  { text: "Hmm, that sounds suspicious. Are you sure about this?", emotion: "skeptical" },
+  { text: "I appreciate you reaching out. What should I do next?", emotion: "friendly" },
+  { text: "This is concerning. I need to think carefully about this.", emotion: "concerned" }
 ];
 
 function sanitizeSuggestion(text: string): string {
   return (text || '').replace(/\s+/g, ' ').trim();
 }
 
-function parseSuggestions(raw: string, limit: number): string[] {
+function parseSuggestions(raw: string, limit: number): Array<{text: string, emotion: string}> {
   if (!raw) return [];
 
-  const tryParse = (input: string): string[] => {
+  const randomEmotions = ['friendly', 'curious', 'concerned', 'playful', 'assertive', 'skeptical', 'empathetic', 'confused', 'cautious', 'enthusiastic'];
+  const getRandomEmotion = () => randomEmotions[Math.floor(Math.random() * randomEmotions.length)];
+
+  const tryParse = (input: string): Array<{text: string, emotion: string}> => {
     try {
       const parsed = JSON.parse(input);
       if (Array.isArray(parsed)) {
-        const unique: string[] = [];
+        const unique: Array<{text: string, emotion: string}> = [];
+        const seenTexts = new Set<string>();
+        
         for (const entry of parsed) {
-          if (typeof entry !== 'string') continue;
-          const clean = sanitizeSuggestion(entry);
-          if (!clean) continue;
-          if (unique.includes(clean)) continue;
-          unique.push(clean);
+          // Check if entry is an object with text and emotion
+          if (typeof entry === 'object' && entry !== null && 'text' in entry) {
+            const clean = sanitizeSuggestion(entry.text);
+            if (!clean || seenTexts.has(clean)) continue;
+            const emotion = typeof entry.emotion === 'string' && entry.emotion.trim()
+              ? entry.emotion.trim().toLowerCase()
+              : getRandomEmotion();
+            unique.push({ text: clean, emotion });
+            seenTexts.add(clean);
+          }
+          // Fallback: if entry is a string, add random emotion
+          else if (typeof entry === 'string') {
+            const clean = sanitizeSuggestion(entry);
+            if (!clean || seenTexts.has(clean)) continue;
+            unique.push({ text: clean, emotion: getRandomEmotion() });
+            seenTexts.add(clean);
+          }
+          
           if (unique.length >= limit) break;
         }
         return unique;
@@ -81,7 +101,7 @@ function parseSuggestions(raw: string, limit: number): string[] {
       .map(sanitizeSuggestion)
       .filter(Boolean);
     if (lines.length > 0) {
-      suggestions = lines.slice(0, limit);
+      suggestions = lines.slice(0, limit).map(text => ({ text, emotion: getRandomEmotion() }));
     }
   }
 
@@ -320,16 +340,19 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
   return generateBlendMessage(samples, { mode: "group" });
 }
 
-export async function getSuggestedReplies(context: ChatMessage[], count = 3): Promise<string[]> {
-  const limit = Math.max(2, Math.min(Number.isFinite(count) ? Number(count) : 3, 5));
+export async function getSuggestedReplies(context: ChatMessage[], count = 5): Promise<Array<{text: string, emotion: string}>> {
+  const limit = Math.max(2, Math.min(Number.isFinite(count) ? Number(count) : 5, 5));
   const baseContext = Array.isArray(context) ? context : [];
   const prompt: ChatMessage[] = [
     ...baseContext,
     {
       role: 'user',
       content:
-        `Provide ${limit} short follow-up replies that keep the scammer chatting. ` +
-        `Return ONLY a JSON array of ${limit} natural-sounding strings—no explanations, no numbering.`,
+        `Provide ${limit} short follow-up replies that keep the scammer chatting, each with a distinct emotional tone. ` +
+        `Analyze the conversation context (sentiment, urgency, topic) to select appropriate emotions. ` +
+        `Return ONLY a JSON array of ${limit} objects with this format: [{"text": "reply text", "emotion": "tone"}]. ` +
+        `Use varied emotions like: friendly, curious, concerned, playful, assertive, skeptical, empathetic, confused, cautious, enthusiastic. ` +
+        `No explanations, no numbering—just the JSON array.`,
     },
   ];
 
