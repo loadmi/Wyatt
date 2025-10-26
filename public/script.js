@@ -158,7 +158,6 @@ class BotController {
         this.chatMessagesEl = document.getElementById('chatMessages');
         this.chatPersonaSelect = document.getElementById('chatPersonaSelect');
         this.chatPersonaResetBtn = document.getElementById('chatPersonaResetBtn');
-        this.chatPersonaBadge = document.getElementById('chatPersonaBadge');
         this.chatComposer = document.getElementById('chatComposer');
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
@@ -1054,12 +1053,17 @@ class BotController {
             this.chatMetaEl.removeAttribute('title');
         }
 
-        this.activeChatPersonaId = personaId;
-        this.activeChatUsesDefaultPersona = usesDefault;
-        this.activeChatPersonaUpdatedAt = personaUpdatedAt;
+        if (personaId !== undefined && personaId !== null) {
+            this.activeChatPersonaId = personaId;
+        }
+        if (usesDefault !== undefined && usesDefault !== null) {
+            this.activeChatUsesDefaultPersona = usesDefault;
+        }
+        if (personaUpdatedAt !== undefined && personaUpdatedAt !== null) {
+            this.activeChatPersonaUpdatedAt = personaUpdatedAt;
+        }
 
         this.refreshChatPersonaOptions();
-        this.updateChatPersonaBadge();
     }
 
     refreshChatPersonaOptions() {
@@ -1124,44 +1128,8 @@ class BotController {
             const disableReset = disableSelect || this.activeChatUsesDefaultPersona !== false;
             this.chatPersonaResetBtn.disabled = disableReset;
         }
-
-        this.updateChatPersonaBadge();
     }
 
-    updateChatPersonaBadge() {
-        if (!this.chatPersonaBadge) {
-            return;
-        }
-        if (!this.activeChatId || !this.activeChatPersonaId) {
-            this.chatPersonaBadge.textContent = '';
-            this.chatPersonaBadge.setAttribute('hidden', '');
-            this.chatPersonaBadge.removeAttribute('title');
-            delete this.chatPersonaBadge.dataset.variant;
-            return;
-        }
-
-        const personaLabel = formatPersonaName(this.activeChatPersonaId);
-        const custom = this.activeChatUsesDefaultPersona === false;
-        const parts = [`Persona · ${personaLabel}`];
-        if (custom) {
-            parts.push('(custom)');
-        }
-        this.chatPersonaBadge.textContent = parts.join(' ');
-        if (custom) {
-            this.chatPersonaBadge.dataset.variant = 'custom';
-        } else {
-            this.chatPersonaBadge.dataset.variant = 'default';
-        }
-
-        if (Number.isFinite(this.activeChatPersonaUpdatedAt)) {
-            const updated = new Date(this.activeChatPersonaUpdatedAt);
-            this.chatPersonaBadge.title = `Persona last changed ${updated.toLocaleString()}`;
-        } else {
-            this.chatPersonaBadge.removeAttribute('title');
-        }
-
-        this.chatPersonaBadge.removeAttribute('hidden');
-    }
 
     async handleActiveChatPersonaChange() {
         if (!this.chatPersonaSelect || this._suppressChatPersonaChange) {
@@ -1288,7 +1256,7 @@ class BotController {
                 if (item.id === chat.id) {
                     const fields = ['personaId', 'personaLabel', 'usesDefaultPersona', 'personaUpdatedAt'];
                     fields.forEach(field => {
-                        if (Object.prototype.hasOwnProperty.call(chat, field) && item[field] !== chat[field]) {
+                        if (Object.prototype.hasOwnProperty.call(chat, field) && chat[field] !== undefined && chat[field] !== null && item[field] !== chat[field]) {
                             item[field] = chat[field];
                             changed = true;
                         }
@@ -1684,6 +1652,10 @@ class BotController {
                     lastTimestamp: Array.isArray(data.messages) && data.messages.length > 0
                         ? data.messages[data.messages.length - 1].timestamp
                         : undefined,
+                    personaId: data.chat.personaId,
+                    personaLabel: data.chat.personaLabel,
+                    usesDefaultPersona: data.chat.usesDefaultPersona,
+                    personaUpdatedAt: data.chat.personaUpdatedAt,
                 };
                 this.updateActiveChatHeader(headerMeta);
                 const personaChanged = this.updateChatCollections({
