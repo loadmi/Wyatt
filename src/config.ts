@@ -257,7 +257,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     if (Array.isArray(rawAccounts)) {
       const sanitized = rawAccounts
         .map((entry) => sanitizePersistedAccount(entry))
-        .filter((entry): entry is TelegramAccount => Boolean(entry))
+        .filter((entry): entry is TelegramAccount => entry !== null)
         .map(cloneAccount);
       config.telegramAccounts = sanitized;
     } else if (rawAccounts === undefined) {

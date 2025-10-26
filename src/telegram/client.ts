@@ -499,7 +499,7 @@ async function resolveGroupInputPeer(groupId: string): Promise<GroupCacheEntry |
     return groupEntry;
   }
   const groups = await listTelegramGroups();
-  return groups.find((g) => g.id === groupId) ? groupCache.get(groupId) : undefined;
+  return groups.some((g) => g.id === groupId) ? groupCache.get(groupId) : undefined;
 }
 
 export async function listTelegramGroups(): Promise<TelegramGroup[]> {

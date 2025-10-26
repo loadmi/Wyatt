@@ -50,7 +50,7 @@ function looksLikeJsonError(text: string): boolean {
   try {
     const obj = JSON.parse(text);
     if (!obj || typeof obj !== 'object') return false;
-    if (typeof obj.error !== 'undefined') return true;
+    if (obj.error !== undefined) return true;
     if (typeof obj.status === 'number' && obj.status >= 400) return true;
     const details = obj.details;
     if (details && typeof details === 'object' && details.error) return true;

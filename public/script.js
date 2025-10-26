@@ -2169,11 +2169,11 @@ class BotController {
                 }
             }
         } catch (error) {
-            if (!silent) {
+            if (silent) {
+                console.warn('Failed to load chats:', error);
+            } else {
                 const message = error && error.message ? error.message : 'Failed to load chats.';
                 this.updateChatStatus(message, 'error');
-            } else {
-                console.warn('Failed to load chats:', error);
             }
         } finally {
             this.loadingChats = false;
@@ -2270,11 +2270,11 @@ class BotController {
                 }
             }
         } catch (error) {
-            if (!silent) {
+            if (silent) {
+                console.warn('Failed to refresh chat:', error);
+            } else {
                 const message = error && error.message ? error.message : 'Failed to load chat history.';
                 this.updateChatStatus(message, 'error');
-            } else {
-                console.warn('Failed to refresh chat:', error);
             }
         } finally {
             this.chatLoading = false;

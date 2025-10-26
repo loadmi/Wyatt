@@ -13,8 +13,8 @@ import {
   getChatHistory,
   sendMessageToChat,
   sendBlendMessage,
+  initiateAccountConsoleLogin,
 } from "../telegram/client";
-import { initiateAccountConsoleLogin } from "../telegram/client";
 import { getSnapshot } from "../metrics";
 
 import {
@@ -33,7 +33,6 @@ import {
   updateChatPersona as setChatPersonaForChat,
   resetChatPersonaToDefault as resetChatPersonaForChat,
 } from "../telegram/chatPersonality";
-import { sanitizeConfig } from "../utils/logSanitizer";
 import { loadPersonaFile } from "../utils/personaLoader";
 
 const app: Express = express();

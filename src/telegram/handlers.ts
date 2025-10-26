@@ -157,9 +157,9 @@ async function loadInteractionTracker(): Promise<Map<string, InteractionRecord>>
      const tracker = new Map<string, InteractionRecord>();
 
      if (persisted.interactionTracker) {
-       Object.entries(persisted.interactionTracker).forEach(([key, record]) => {
+       for (const [key, record] of Object.entries(persisted.interactionTracker)) {
          tracker.set(key, record as InteractionRecord);
-       });
+       }
      }
 
      return tracker;
@@ -172,9 +172,9 @@ async function loadInteractionTracker(): Promise<Map<string, InteractionRecord>>
 // Initialize interaction tracker asynchronously
 const interactionTracker = new Map<string, InteractionRecord>();
 loadInteractionTracker().then(tracker => {
-  tracker.forEach((value, key) => {
+  for (const [key, value] of tracker.entries()) {
     interactionTracker.set(key, value);
-  });
+  }
 }).catch(e => {
   console.warn("Failed to initialize interaction tracker:", e?.message || e);
 });
@@ -204,9 +204,9 @@ function saveInteractionTracker(): void {
    try {
      const { savePersistedState } = require("../persistence");
      const data: Record<string, InteractionRecord> = {};
-     interactionTracker.forEach((record, key) => {
+     for (const [key, record] of interactionTracker.entries()) {
        data[key] = record;
-     });
+     }
      // Call async function without awaiting - fire and forget
      savePersistedState({ interactionTracker: data }).catch((e: any) => {
        console.warn("Failed to save interaction tracker:", e?.message || e);
@@ -368,7 +368,7 @@ function parseHumanResponse(raw: string, suggestions: Array<{text: string, emoti
   ];
 
   for (const pattern of numberPatterns) {
-    const match = lowered.match(pattern);
+    const match = pattern.exec(lowered);
     if (match) {
       const idx = Number(match[1]);
       if (Number.isFinite(idx) && idx >= 1 && idx <= suggestions.length) {
@@ -468,7 +468,7 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
           try {
             const offset = ent.offset ?? 0;
             const length = ent.length ?? 0;
-            const segment = text.substr(offset, length).toLowerCase();
+            const segment = text.substring(offset, offset + length).toLowerCase();
             if (self.usernameLower && segment === "@" + self.usernameLower) return true;
           } catch { }
         }
@@ -513,8 +513,7 @@ export function convertContextToLLM(context: ContextEntry[], systemPrompt?: stri
   }
   
   // Convert context entries directly into pre-allocated array
-  for (let i = 0; i < context.length; i++) {
-    const m = context[i];
+  for (const m of context) {
     result[writeIndex++] = {
       role: m.from === "me" ? "assistant" : "user",
       content: m.text,
