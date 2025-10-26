@@ -526,8 +526,8 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
 
 async function applyReadingDelay(client: any, message: any, inputPeer: any): Promise<void> {
   const waitBefore = randomInRange(
-    appConfig().waitBeforeTypingMs.min,
-    appConfig().waitBeforeTypingMs.max
+    appConfig().messageDelays.waitBeforeTypingMs.min,
+    appConfig().messageDelays.waitBeforeTypingMs.max
   );
   
   // Mark the incoming message as read right before starting the wait timer
@@ -553,8 +553,8 @@ async function applyReadingDelay(client: any, message: any, inputPeer: any): Pro
 
 async function applyTypingDelay(client: any, message: any, inputPeer: any): Promise<void> {
   const typingFor = randomInRange(
-    appConfig().typingDurationMs.min,
-    appConfig().typingDurationMs.max
+    appConfig().messageDelays.typingDurationMs.min,
+    appConfig().messageDelays.typingDurationMs.max
   );
   
   const peer = inputPeer || message.peerId;
@@ -570,7 +570,7 @@ async function applyTypingDelay(client: any, message: any, inputPeer: any): Prom
 
   // Fire immediately, then keep alive per config
   sendTyping();
-  const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
+  const interval = setInterval(sendTyping, appConfig().messageDelays.typingKeepaliveMs);
 
   await sleep(typingFor);
   

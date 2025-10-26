@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { TelegramAccount, SupervisorConfig } from './config';
+import type { TelegramAccount, SupervisorConfig, MessageDelaysConfig } from './config';
 
 export type PersistedState = {
    currentPersona?: string;
@@ -17,6 +17,7 @@ export type PersistedState = {
    /** @deprecated Use supervisor.contact instead */
    humanEscalationChatId?: string;
    supervisor?: Partial<SupervisorConfig>;
+   messageDelays?: Partial<MessageDelaysConfig>;
    chatPersonalities?: Record<string, {
      personaId: string;
      systemPrompt: string;

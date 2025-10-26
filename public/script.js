@@ -107,6 +107,15 @@ class BotController {
         this.supervisorSaveBtn = document.getElementById('supervisorSaveBtn');
         this.supervisorStatus = document.getElementById('supervisorStatus');
         this._supervisorStatusTimer = null;
+        // Message delays configuration elements
+        this.readingDelayMin = document.getElementById('readingDelayMin');
+        this.readingDelayMax = document.getElementById('readingDelayMax');
+        this.typingDurationMin = document.getElementById('typingDurationMin');
+        this.typingDurationMax = document.getElementById('typingDurationMax');
+        this.typingKeepaliveInput = document.getElementById('typingKeepaliveInput');
+        this.messageDelaysSaveBtn = document.getElementById('messageDelaysSaveBtn');
+        this.messageDelaysStatus = document.getElementById('messageDelaysStatus');
+        this._messageDelaysStatusTimer = null;
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -156,6 +165,10 @@ class BotController {
         }
         if (this.supervisorSaveBtn) {
             this.supervisorSaveBtn.addEventListener('click', () => this.saveSupervisorConfig());
+        }
+        // Message delays configuration event listener
+        if (this.messageDelaysSaveBtn) {
+            this.messageDelaysSaveBtn.addEventListener('click', () => this.saveMessageDelaysConfig());
         }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
@@ -322,6 +335,9 @@ class BotController {
 
         // Load supervisor configuration
         this.loadSupervisorConfig();
+
+        // Load message delays configuration
+        this.loadMessageDelaysConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -799,6 +815,197 @@ class BotController {
                     delete this.supervisorStatus.dataset.variant;
                 }
                 this._supervisorStatusTimer = null;
+            }, 3000);
+        }
+    }
+
+    async loadMessageDelaysConfig() {
+        if (this._messageDelaysStatusTimer) {
+            clearTimeout(this._messageDelaysStatusTimer);
+            this._messageDelaysStatusTimer = null;
+        }
+        try {
+            const response = await fetch('/api/config/message-delays');
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            const data = await response.json();
+            
+            // Set reading delay (convert ms to seconds)
+            if (this.readingDelayMin && data.waitBeforeTypingMs && data.waitBeforeTypingMs.min) {
+                this.readingDelayMin.value = Math.round(data.waitBeforeTypingMs.min / 1000);
+            }
+            if (this.readingDelayMax && data.waitBeforeTypingMs && data.waitBeforeTypingMs.max) {
+                this.readingDelayMax.value = Math.round(data.waitBeforeTypingMs.max / 1000);
+            }
+            
+            // Set typing duration (convert ms to seconds)
+            if (this.typingDurationMin && data.typingDurationMs && data.typingDurationMs.min) {
+                this.typingDurationMin.value = Math.round(data.typingDurationMs.min / 1000);
+            }
+            if (this.typingDurationMax && data.typingDurationMs && data.typingDurationMs.max) {
+                this.typingDurationMax.value = Math.round(data.typingDurationMs.max / 1000);
+            }
+            
+            // Set typing keepalive (convert ms to seconds)
+            if (this.typingKeepaliveInput && data.typingKeepaliveMs) {
+                this.typingKeepaliveInput.value = (data.typingKeepaliveMs / 1000).toFixed(1);
+            }
+            
+            if (this.messageDelaysStatus) {
+                this.messageDelaysStatus.textContent = '';
+                delete this.messageDelaysStatus.dataset.variant;
+            }
+            
+            this.log('Message delays configuration loaded');
+        } catch (error) {
+            if (this.messageDelaysStatus) {
+                this.messageDelaysStatus.textContent = 'Failed to load configuration';
+                this.messageDelaysStatus.dataset.variant = 'error';
+            }
+            this.log('❌ Error loading message delays config: ' + error.message);
+            this._messageDelaysStatusTimer = setTimeout(() => {
+                if (this.messageDelaysStatus) {
+                    this.messageDelaysStatus.textContent = '';
+                    delete this.messageDelaysStatus.dataset.variant;
+                }
+                this._messageDelaysStatusTimer = null;
+            }, 3000);
+        }
+    }
+
+    async saveMessageDelaysConfig() {
+        // Validate reading delay
+        if (this.readingDelayMin && this.readingDelayMax) {
+            const min = parseFloat(this.readingDelayMin.value);
+            const max = parseFloat(this.readingDelayMax.value);
+            if (min > max) {
+                if (this.messageDelaysStatus) {
+                    this.messageDelaysStatus.textContent = 'Reading delay min must be ≤ max';
+                    this.messageDelaysStatus.dataset.variant = 'error';
+                }
+                this._messageDelaysStatusTimer = setTimeout(() => {
+                    if (this.messageDelaysStatus) {
+                        this.messageDelaysStatus.textContent = '';
+                        delete this.messageDelaysStatus.dataset.variant;
+                    }
+                    this._messageDelaysStatusTimer = null;
+                }, 3000);
+                return;
+            }
+        }
+        
+        // Validate typing duration
+        if (this.typingDurationMin && this.typingDurationMax) {
+            const min = parseFloat(this.typingDurationMin.value);
+            const max = parseFloat(this.typingDurationMax.value);
+            if (min > max) {
+                if (this.messageDelaysStatus) {
+                    this.messageDelaysStatus.textContent = 'Typing duration min must be ≤ max';
+                    this.messageDelaysStatus.dataset.variant = 'error';
+                }
+                this._messageDelaysStatusTimer = setTimeout(() => {
+                    if (this.messageDelaysStatus) {
+                        this.messageDelaysStatus.textContent = '';
+                        delete this.messageDelaysStatus.dataset.variant;
+                    }
+                    this._messageDelaysStatusTimer = null;
+                }, 3000);
+                return;
+            }
+        }
+        
+        // Validate typing keepalive
+        if (this.typingKeepaliveInput) {
+            const keepalive = parseFloat(this.typingKeepaliveInput.value);
+            if (keepalive >= 5) {
+                if (this.messageDelaysStatus) {
+                    this.messageDelaysStatus.textContent = 'Typing keepalive must be < 5 seconds';
+                    this.messageDelaysStatus.dataset.variant = 'error';
+                }
+                this._messageDelaysStatusTimer = setTimeout(() => {
+                    if (this.messageDelaysStatus) {
+                        this.messageDelaysStatus.textContent = '';
+                        delete this.messageDelaysStatus.dataset.variant;
+                    }
+                    this._messageDelaysStatusTimer = null;
+                }, 3000);
+                return;
+            }
+        }
+        
+        // Build payload (convert seconds to ms)
+        const payload = {};
+        
+        if (this.readingDelayMin && this.readingDelayMax) {
+            payload.waitBeforeTypingMs = {
+                min: parseFloat(this.readingDelayMin.value) * 1000,
+                max: parseFloat(this.readingDelayMax.value) * 1000
+            };
+        }
+        
+        if (this.typingDurationMin && this.typingDurationMax) {
+            payload.typingDurationMs = {
+                min: parseFloat(this.typingDurationMin.value) * 1000,
+                max: parseFloat(this.typingDurationMax.value) * 1000
+            };
+        }
+        
+        if (this.typingKeepaliveInput) {
+            payload.typingKeepaliveMs = parseFloat(this.typingKeepaliveInput.value) * 1000;
+        }
+        
+        // Show saving status
+        if (this.messageDelaysStatus) {
+            this.messageDelaysStatus.textContent = 'Saving...';
+            delete this.messageDelaysStatus.dataset.variant;
+        }
+        if (this._messageDelaysStatusTimer) {
+            clearTimeout(this._messageDelaysStatusTimer);
+            this._messageDelaysStatusTimer = null;
+        }
+        
+        // Disable save button
+        if (this.messageDelaysSaveBtn) {
+            this.messageDelaysSaveBtn.disabled = true;
+        }
+        
+        try {
+            const response = await fetch('/api/config/message-delays', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok || (data && data.success === false)) {
+                throw new Error((data && data.message) || ('HTTP ' + response.status));
+            }
+            
+            if (this.messageDelaysStatus) {
+                this.messageDelaysStatus.textContent = 'Configuration saved successfully';
+                this.messageDelaysStatus.dataset.variant = 'success';
+            }
+            
+            this.log('✅ Message delays configuration saved');
+            
+            // Reload to ensure UI is in sync
+            await this.loadMessageDelaysConfig();
+        } catch (error) {
+            if (this.messageDelaysStatus) {
+                this.messageDelaysStatus.textContent = 'Failed to save: ' + error.message;
+                this.messageDelaysStatus.dataset.variant = 'error';
+            }
+            this.log('❌ Error saving message delays config: ' + error.message);
+        } finally {
+            if (this.messageDelaysSaveBtn) {
+                this.messageDelaysSaveBtn.disabled = false;
+            }
+            this._messageDelaysStatusTimer = setTimeout(() => {
+                if (this.messageDelaysStatus) {
+                    this.messageDelaysStatus.textContent = '';
+                    delete this.messageDelaysStatus.dataset.variant;
+                }
+                this._messageDelaysStatusTimer = null;
             }, 3000);
         }
     }

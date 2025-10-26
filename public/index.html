@@ -1877,6 +1877,61 @@
                     </div>
                 </div>
                 <div class="panel-card">
+                    <h2 class="panel-title">
+                        Message Delays
+                        <span class="info-icon" title="Configure reading and typing delay behavior for natural conversation flow">ℹ️</span>
+                    </h2>
+                    <p class="panel-subtext">Configure reading and typing delay behavior to simulate natural human response patterns.</p>
+                    
+                    <div class="supervisor-config-section">
+                        <div class="supervisor-delays-section">
+                            <div class="form-field supervisor-delay-group">
+                                <label>Reading Delay</label>
+                                <small>Silent wait before showing typing indicator</small>
+                                <div class="delay-inputs">
+                                    <div class="delay-input-wrapper">
+                                        <label for="readingDelayMin" class="delay-sublabel">Min (seconds)</label>
+                                        <input type="number" id="readingDelayMin" min="1" max="60" step="1" value="5">
+                                    </div>
+                                    <div class="delay-input-wrapper">
+                                        <label for="readingDelayMax" class="delay-sublabel">Max (seconds)</label>
+                                        <input type="number" id="readingDelayMax" min="1" max="60" step="1" value="10">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-field supervisor-delay-group">
+                                <label>Typing Duration</label>
+                                <small>How long to display typing indicator</small>
+                                <div class="delay-inputs">
+                                    <div class="delay-input-wrapper">
+                                        <label for="typingDurationMin" class="delay-sublabel">Min (seconds)</label>
+                                        <input type="number" id="typingDurationMin" min="1" max="60" step="1" value="5">
+                                    </div>
+                                    <div class="delay-input-wrapper">
+                                        <label for="typingDurationMax" class="delay-sublabel">Max (seconds)</label>
+                                        <input type="number" id="typingDurationMax" min="1" max="60" step="1" value="10">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-field supervisor-delay-group">
+                                <label for="typingKeepaliveInput">Typing Keepalive</label>
+                                <small>Typing indicator refresh interval (must be &lt; 5 seconds)</small>
+                                <div class="delay-input-wrapper">
+                                    <input type="number" id="typingKeepaliveInput" min="1" max="4" step="0.5" value="4">
+                                    <span class="input-suffix">seconds</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="inline-actions">
+                            <button type="button" id="messageDelaysSaveBtn" class="supervisor-save-btn">Save Configuration</button>
+                            <small id="messageDelaysStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>
                     <p class="panel-subtext">Manage API credentials and sessions directly from the dashboard. Once a bot logs
                         in successfully, its session string is saved automatically.</p>

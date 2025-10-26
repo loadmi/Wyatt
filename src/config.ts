@@ -14,6 +14,12 @@ export interface SupervisorConfig {
   sleepThresholdMs: number;
 }
 
+export interface MessageDelaysConfig {
+  waitBeforeTypingMs: NumRange;
+  typingDurationMs: NumRange;
+  typingKeepaliveMs: number;
+}
+
 export interface TelegramAccount {
   id: string;
   label: string;
@@ -43,21 +49,6 @@ function envNumber(name: string, fallback: number): number {
 }
 
 const config = {
-  // Initial silent wait before showing typing
-  waitBeforeTypingMs: {
-    min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5_000),
-    max: envNumber("WAIT_BEFORE_TYPING_MS_MAX", 10_000),
-  } as NumRange,
-
-  // Duration to display typing indicator before sending
-  typingDurationMs: {
-    min: envNumber("TYPING_DURATION_MS_MIN", 5_000),
-    max: envNumber("TYPING_DURATION_MS_MAX", 10_000),
-  } as NumRange,
-
-  // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
-  typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
-
   systemPrompt: JSON.stringify(granny),
   // Track currently selected persona filename for dashboard persistence
   currentPersona: "granny.json",
@@ -83,6 +74,17 @@ const config = {
     },
     sleepThresholdMs: envNumber("SLEEP_THRESHOLD_MS", 300_000),
   } as SupervisorConfig,
+  messageDelays: {
+    waitBeforeTypingMs: {
+      min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5_000),
+      max: envNumber("WAIT_BEFORE_TYPING_MS_MAX", 10_000),
+    },
+    typingDurationMs: {
+      min: envNumber("TYPING_DURATION_MS_MIN", 5_000),
+      max: envNumber("TYPING_DURATION_MS_MAX", 10_000),
+    },
+    typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
+  } as MessageDelaysConfig,
 };
 
 export const appConfig = () => config;
@@ -147,6 +149,7 @@ function persistConfig(): void {
       activeAccountId: config.activeAccountId,
       humanEscalationChatId: config.humanEscalationChatId,
       supervisor: config.supervisor,
+      messageDelays: config.messageDelays,
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -297,11 +300,28 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
+  // Handle messageDelays config updates
+  if (Object.prototype.hasOwnProperty.call(newConfig, "messageDelays")) {
+    const messageDelaysUpdate = (newConfig as any).messageDelays;
+    if (messageDelaysUpdate && typeof messageDelaysUpdate === 'object') {
+      if (messageDelaysUpdate.waitBeforeTypingMs !== undefined) {
+        config.messageDelays.waitBeforeTypingMs = messageDelaysUpdate.waitBeforeTypingMs;
+      }
+      if (messageDelaysUpdate.typingDurationMs !== undefined) {
+        config.messageDelays.typingDurationMs = messageDelaysUpdate.typingDurationMs;
+      }
+      if (messageDelaysUpdate.typingKeepaliveMs !== undefined) {
+        config.messageDelays.typingKeepaliveMs = messageDelaysUpdate.typingKeepaliveMs;
+      }
+    }
+  }
+
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
   delete (rest as any).humanEscalationChatId;
   delete (rest as any).supervisor;
+  delete (rest as any).messageDelays;
   Object.assign(config, rest);
 
   persistConfig();
