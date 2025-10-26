@@ -142,8 +142,34 @@ export function startWebServer(): void {
         updates.activeAccountId = persisted.activeAccountId ?? null;
       }
 
+      if (typeof (persisted as any).humanEscalationChatId === "string") {
+        updates.humanEscalationChatId = (persisted as any).humanEscalationChatId;
+      }
+
+      // Load supervisor config if present
+      if (persisted.supervisor && typeof persisted.supervisor === 'object') {
+        updates.supervisor = persisted.supervisor;
+      }
+
+      // Load messageDelays config if present
+      if (persisted.messageDelays && typeof persisted.messageDelays === 'object') {
+        updates.messageDelays = persisted.messageDelays;
+      }
+
       if (Object.keys(updates).length > 0) {
         setConfig(updates as Partial<ReturnType<typeof appConfig>>);
+      }
+
+      // Migration: if legacy humanEscalationChatId exists but supervisor.contact doesn't, migrate it
+      const currentCfg = appConfig() as any;
+      const legacyContact = (persisted as any).humanEscalationChatId;
+      if (legacyContact && typeof legacyContact === 'string' && legacyContact.trim()) {
+        if (!currentCfg.supervisor?.contact || !currentCfg.supervisor.contact.trim()) {
+          console.log("Migrating legacy humanEscalationChatId to supervisor.contact");
+          setConfig({
+            supervisor: { contact: legacyContact.trim() }
+          } as any);
+        }
       }
 
       // One-time migration: if env key is set and not yet in config, store it
@@ -545,6 +571,202 @@ export function startWebServer(): void {
     setConfig({ openrouterApiKey: next } as any);
     const cfg = appConfig() as any;
     res.status(201).json({ success: true, hasOpenrouterKey: !!(cfg.openrouterApiKey && cfg.openrouterApiKey.trim()) });
+  });
+
+  // New supervisor configuration endpoints
+  app.get("/api/config/supervisor", (req: Request, res: Response) => {
+    const cfg = appConfig() as any;
+    const supervisor = cfg.supervisor || {
+      mode: 'wake-up',
+      contact: '',
+      wakeUpDelayMs: { min: 5000, max: 10000 },
+      alwaysFallbackDelayMs: { min: 30000, max: 60000 },
+      sleepThresholdMs: 1000
+    };
+    res.json({
+      mode: supervisor.mode,
+      contact: supervisor.contact,
+      wakeUpDelayMs: supervisor.wakeUpDelayMs,
+      alwaysFallbackDelayMs: supervisor.alwaysFallbackDelayMs,
+      sleepThresholdMs: supervisor.sleepThresholdMs
+    });
+  });
+
+  app.post("/api/config/supervisor", (req: Request, res: Response) => {
+    const { mode, contact, wakeUpDelayMs, alwaysFallbackDelayMs, sleepThresholdMs } = req.body || {};
+    
+    try {
+      const updates: any = {};
+      
+      if (mode !== undefined) {
+        updates.mode = mode;
+      }
+      if (contact !== undefined) {
+        updates.contact = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
+      }
+      if (wakeUpDelayMs !== undefined) {
+        updates.wakeUpDelayMs = wakeUpDelayMs;
+      }
+      if (alwaysFallbackDelayMs !== undefined) {
+        updates.alwaysFallbackDelayMs = alwaysFallbackDelayMs;
+      }
+      if (sleepThresholdMs !== undefined) {
+        updates.sleepThresholdMs = sleepThresholdMs;
+      }
+      
+      // Apply updates through setConfig which will validate
+      setConfig({ supervisor: updates } as any);
+      
+      // Return updated config
+      const cfg = appConfig() as any;
+      const supervisor = cfg.supervisor;
+      res.status(201).json({
+        success: true,
+        mode: supervisor.mode,
+        contact: supervisor.contact,
+        wakeUpDelayMs: supervisor.wakeUpDelayMs,
+        alwaysFallbackDelayMs: supervisor.alwaysFallbackDelayMs,
+        sleepThresholdMs: supervisor.sleepThresholdMs
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update supervisor configuration.";
+      res.status(400).json({ success: false, message });
+    }
+  });
+
+  // Legacy escalation endpoints - now read/write both supervisor.contact and humanEscalationChatId
+  app.get("/api/config/escalation", (req: Request, res: Response) => {
+    const cfg = appConfig() as any;
+    // Prefer supervisor.contact, fallback to legacy field
+    const contact = cfg?.supervisor?.contact || cfg?.humanEscalationChatId || "";
+    res.json({ contact });
+  });
+
+  app.post("/api/config/escalation", (req: Request, res: Response) => {
+    const { contact } = req.body || {};
+    const next = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
+    
+    // Update both fields for backward compatibility
+    setConfig({
+      humanEscalationChatId: next,
+      supervisor: { contact: next }
+    } as any);
+    
+    const cfg = appConfig() as any;
+    const updatedContact = cfg?.supervisor?.contact || cfg?.humanEscalationChatId || "";
+    res.status(201).json({ success: true, contact: updatedContact });
+  });
+
+  // Message delays configuration endpoints
+  app.get("/api/config/message-delays", (req: Request, res: Response) => {
+    const cfg = appConfig() as any;
+    const messageDelays = cfg.messageDelays || {
+      waitBeforeTypingMs: { min: 5000, max: 10000 },
+      typingDurationMs: { min: 5000, max: 10000 },
+      typingKeepaliveMs: 4000
+    };
+    res.json({
+      waitBeforeTypingMs: messageDelays.waitBeforeTypingMs,
+      typingDurationMs: messageDelays.typingDurationMs,
+      typingKeepaliveMs: messageDelays.typingKeepaliveMs
+    });
+  });
+
+  app.post("/api/config/message-delays", (req: Request, res: Response) => {
+    const { waitBeforeTypingMs, typingDurationMs, typingKeepaliveMs } = req.body || {};
+    
+    try {
+      const updates: any = {};
+      
+      // Validate waitBeforeTypingMs
+      if (waitBeforeTypingMs !== undefined) {
+        if (typeof waitBeforeTypingMs !== 'object' ||
+            typeof waitBeforeTypingMs.min !== 'number' ||
+            typeof waitBeforeTypingMs.max !== 'number') {
+          return res.status(400).json({
+            success: false,
+            message: 'waitBeforeTypingMs must have numeric min and max values'
+          });
+        }
+        if (waitBeforeTypingMs.min < 0 || waitBeforeTypingMs.max < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'waitBeforeTypingMs min and max must be non-negative'
+          });
+        }
+        if (waitBeforeTypingMs.min > waitBeforeTypingMs.max) {
+          return res.status(400).json({
+            success: false,
+            message: 'waitBeforeTypingMs min cannot be greater than max'
+          });
+        }
+        updates.waitBeforeTypingMs = waitBeforeTypingMs;
+      }
+      
+      // Validate typingDurationMs
+      if (typingDurationMs !== undefined) {
+        if (typeof typingDurationMs !== 'object' ||
+            typeof typingDurationMs.min !== 'number' ||
+            typeof typingDurationMs.max !== 'number') {
+          return res.status(400).json({
+            success: false,
+            message: 'typingDurationMs must have numeric min and max values'
+          });
+        }
+        if (typingDurationMs.min < 0 || typingDurationMs.max < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'typingDurationMs min and max must be non-negative'
+          });
+        }
+        if (typingDurationMs.min > typingDurationMs.max) {
+          return res.status(400).json({
+            success: false,
+            message: 'typingDurationMs min cannot be greater than max'
+          });
+        }
+        updates.typingDurationMs = typingDurationMs;
+      }
+      
+      // Validate typingKeepaliveMs
+      if (typingKeepaliveMs !== undefined) {
+        if (typeof typingKeepaliveMs !== 'number') {
+          return res.status(400).json({
+            success: false,
+            message: 'typingKeepaliveMs must be a number'
+          });
+        }
+        if (typingKeepaliveMs < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'typingKeepaliveMs must be non-negative'
+          });
+        }
+        if (typingKeepaliveMs >= 5000) {
+          return res.status(400).json({
+            success: false,
+            message: 'typingKeepaliveMs must be less than 5000ms (Telegram requirement)'
+          });
+        }
+        updates.typingKeepaliveMs = typingKeepaliveMs;
+      }
+      
+      // Apply updates through setConfig
+      setConfig({ messageDelays: updates } as any);
+      
+      // Return updated config
+      const cfg = appConfig() as any;
+      const messageDelays = cfg.messageDelays;
+      res.status(201).json({
+        success: true,
+        waitBeforeTypingMs: messageDelays.waitBeforeTypingMs,
+        typingDurationMs: messageDelays.typingDurationMs,
+        typingKeepaliveMs: messageDelays.typingKeepaliveMs
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update message delays configuration.";
+      res.status(400).json({ success: false, message });
+    }
   });
 
   app.listen(PORT, async () => {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { TelegramAccount } from './config';
+import type { TelegramAccount, SupervisorConfig, MessageDelaysConfig } from './config';
 
 export type PersistedState = {
    currentPersona?: string;
@@ -14,6 +14,10 @@ export type PersistedState = {
    activeAccountId?: string | null;
    // Track last interaction times per user/chat for wake up functionality
    interactionTracker?: Record<string, { lastInteraction: number; chatId: string }>;
+   /** @deprecated Use supervisor.contact instead */
+   humanEscalationChatId?: string;
+   supervisor?: Partial<SupervisorConfig>;
+   messageDelays?: Partial<MessageDelaysConfig>;
    chatPersonalities?: Record<string, {
      personaId: string;
      systemPrompt: string;

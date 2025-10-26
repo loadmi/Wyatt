@@ -1,9 +1,10 @@
 // src/telegram/handlers.ts
 import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Api } from "telegram";
+import { Button } from "telegram/tl/custom/button";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
-import { getResponse } from "../llm/llm";
+import { getResponse, getSuggestedReplies } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 
@@ -17,6 +18,43 @@ type ContextEntry = {
   text: string;
 };
 const historyCache = new Map<string, ContextEntry[]>();
+
+const FALLBACK_SUGGESTIONS = [
+  { text: "Oh goodness, that's quite something—should I keep them chatting?", emotion: "curious" },
+  { text: "Let me play along a bit—how about I ask for more details?", emotion: "playful" },
+  { text: "I can stall them a little longer. Want me to stay curious?", emotion: "friendly" },
+  { text: "This seems suspicious. Should I be more cautious?", emotion: "skeptical" },
+  { text: "I'm a bit concerned about this. How should I respond?", emotion: "concerned" }
+];
+
+type HumanOverrideDecision =
+  | { type: "selection"; text: string; fromSuggestion: boolean; index?: number }
+  | { type: "ignore"; reason: "timeout" | "dismissed" };
+
+type PendingHumanOverride = {
+  id: string;
+  conversationKey: string;
+  humanPeerKey: string;
+  humanPeer: any;
+  requestMessageId?: number;
+  suggestions: Array<{text: string, emotion: string}>;
+  createdAt: number;
+  expiresAt: number;
+  resolved: boolean;
+  resolve: (decision: HumanOverrideDecision) => void;
+  original: {
+    inputPeer: any;
+    message: any;
+    senderIdString: string;
+    chatId?: string;
+    personaRecord: any;
+    startedAt: number;
+  };
+};
+
+const pendingHumanOverrides = new Map<string, PendingHumanOverride>();
+let cachedHumanPeerKey: string | null = null;
+let cachedHumanPeerRaw: string | null = null;
 
 // Cached self info to detect mentions/replies in group chats
 let selfUsernameCached: string | null = null;
@@ -67,7 +105,7 @@ function shouldWakeUp(senderId: string, chatId: string | undefined): boolean {
   }
 
   const timeSinceLastInteraction = Date.now() - record.lastInteraction;
-  return timeSinceLastInteraction > appConfig().sleepThresholdMs;
+  return timeSinceLastInteraction > appConfig().supervisor.sleepThresholdMs;
 }
 
 // Helper function to save interaction tracker to persistence
@@ -98,7 +136,158 @@ function updateLastInteraction(senderId: string, chatId: string | undefined): vo
 // Helper function to get wake up delay duration
 function getWakeUpDelay(): number {
   const config = appConfig();
-  return randomInRange(config.wakeUpDelayMs.min, config.wakeUpDelayMs.max);
+  return randomInRange(config.supervisor.wakeUpDelayMs.min, config.supervisor.wakeUpDelayMs.max);
+}
+
+function getConfiguredHumanTarget(): string | null {
+  const cfg = appConfig() as any;
+  // Prefer new supervisor.contact field, fallback to legacy humanEscalationChatId
+  const raw = cfg?.supervisor?.contact || cfg?.humanEscalationChatId;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+// Check if supervisor should be contacted based on mode and wake-up status
+function shouldContactSupervisor(senderId: string, chatId?: string): boolean {
+  const cfg = appConfig() as any;
+  const mode = cfg?.supervisor?.mode || 'wake-up';
+  
+  // If disabled, never contact supervisor
+  if (mode === 'disabled') {
+    return false;
+  }
+  
+  // If always mode, always contact supervisor
+  if (mode === 'always') {
+    return true;
+  }
+  
+  // If wake-up mode, check if bot needs to wake up
+  if (mode === 'wake-up') {
+    return shouldWakeUp(senderId, chatId);
+  }
+  
+  return false;
+}
+
+// Get appropriate fallback delay based on supervisor mode
+function getSupervisorFallbackDelay(): number {
+  const cfg = appConfig() as any;
+  const mode = cfg?.supervisor?.mode || 'wake-up';
+  
+  if (mode === 'always') {
+    const delays = cfg?.supervisor?.alwaysFallbackDelayMs || {
+      min: 30_000,
+      max: 60_000
+    };
+    return randomInRange(delays.min, delays.max);
+  }
+  
+  // Default to wake-up delays for 'wake-up' mode or fallback
+  const delays = cfg?.supervisor?.wakeUpDelayMs || {
+    min: 5_000,
+    max: 10_000
+  };
+  return randomInRange(delays.min, delays.max);
+}
+
+async function resolveHumanPeer(client: any): Promise<{ input: any; key: string } | null> {
+  const target = getConfiguredHumanTarget();
+  if (!target) return null;
+
+  const queries: any[] = [target];
+  if (/^\d+$/.test(target)) {
+    const numeric = Number(target);
+    if (Number.isFinite(numeric)) queries.push(numeric);
+    try { queries.push(BigInt(target)); } catch { }
+  } else if (target.startsWith("@")) {
+    queries.push(target.slice(1));
+  }
+
+  let lastError: unknown = null;
+  for (const query of queries) {
+    try {
+      const entity = await client.getInputEntity(query);
+      const key = toIdStringSafe(entity) || toIdStringSafe((entity as any)?.peer) || toIdStringSafe(query) || target;
+      cachedHumanPeerKey = key;
+      cachedHumanPeerRaw = target;
+      return { input: entity, key: key || target };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  cachedHumanPeerKey = null;
+  cachedHumanPeerRaw = null;
+  console.warn("Failed to resolve human escalation contact:", (lastError as any)?.message || lastError);
+  return null;
+}
+
+function findPendingOverrideForMessage(message: any): PendingHumanOverride | undefined {
+  const replyId =
+    (message as any)?.replyToMsgId ||
+    (message as any)?.replyTo?.replyToMsgId;
+
+  const all = Array.from(pendingHumanOverrides.values()).filter((entry) => !entry.resolved);
+  if (replyId) {
+    const byReply = all.find((entry) => entry.requestMessageId === replyId);
+    if (byReply) return byReply;
+  }
+
+  const peerKey = toIdStringSafe(message?.peerId);
+  const senderKey = toIdStringSafe((message?.fromId as any)?.userId);
+  if (peerKey || senderKey) {
+    const matches = all.filter(
+      (entry) => entry.humanPeerKey === peerKey || entry.humanPeerKey === senderKey,
+    );
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      return matches.sort((a, b) => b.createdAt - a.createdAt)[0];
+    }
+  }
+
+  if (all.length === 0) return undefined;
+  return all.sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+type ParsedHumanResponse =
+  | { kind: "suggestion"; index: number; text: string }
+  | { kind: "custom"; text: string }
+  | { kind: "ignore" };
+
+function parseHumanResponse(raw: string, suggestions: Array<{text: string, emotion: string}>): ParsedHumanResponse | null {
+  const text = (raw || "").trim();
+  if (!text) return null;
+
+  const lowered = text.toLowerCase();
+  const ignoreTokens = ["ignore", "skip", "dismiss", "auto", "none", "default"];
+  if (ignoreTokens.includes(lowered)) {
+    return { kind: "ignore" };
+  }
+
+  const numberPatterns = [
+    /^#?(\d{1,2})$/, // 1, #1
+    /^#?(\d{1,2})[.)]?$/, // 1. or 1)
+    /^(?:send|option|use|reply|choice|pick|button)\s*#?(\d{1,2})$/, // send 1
+    /^send\s+option\s+(\d{1,2})$/,
+  ];
+
+  for (const pattern of numberPatterns) {
+    const match = lowered.match(pattern);
+    if (match) {
+      const idx = Number(match[1]);
+      if (Number.isFinite(idx) && idx >= 1 && idx <= suggestions.length) {
+        const suggestion = suggestions[idx - 1];
+        const text = typeof suggestion === 'string' ? suggestion : suggestion.text;
+        if (text && text.trim()) {
+          return { kind: "suggestion", index: idx - 1, text: text.trim() };
+        }
+      }
+    }
+  }
+
+  return { kind: "custom", text };
 }
 
 async function getSelfIdentity(client: any): Promise<{ usernameLower: string | null; idString: string | null }> {
@@ -242,6 +431,534 @@ export function convertContextToLLM(context: ContextEntry[], systemPrompt?: stri
   return mapped;
 }
 
+async function handleHumanOverrideMessage(message: any, client: any): Promise<boolean> {
+  const configured = getConfiguredHumanTarget();
+  if (!configured) return false;
+
+  const override = findPendingOverrideForMessage(message);
+  const peerKey = toIdStringSafe(message?.peerId);
+  const senderKey = toIdStringSafe((message?.fromId as any)?.userId);
+  const candidates = [peerKey, senderKey];
+
+  if (override && !candidates.includes(override.humanPeerKey)) {
+    candidates.push(override.humanPeerKey);
+  }
+  if (cachedHumanPeerKey && !candidates.includes(cachedHumanPeerKey)) {
+    candidates.push(cachedHumanPeerKey);
+  }
+
+  const trimmed = configured.trim();
+  const normalized = trimmed.toLowerCase();
+  let isConfiguredContact = false;
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (candidate === trimmed || candidate === normalized) {
+      isConfiguredContact = true;
+      cachedHumanPeerKey = candidate;
+      cachedHumanPeerRaw = trimmed;
+      break;
+    }
+  }
+
+  if (!isConfiguredContact && trimmed.startsWith("@")) {
+    try {
+      const sender = await message.getSender?.();
+      const usernameRaw: string | undefined =
+        sender?.username ||
+        (Array.isArray((sender as any)?.usernames) ? (sender as any).usernames[0]?.username : undefined);
+      if (usernameRaw) {
+        const username = usernameRaw.toLowerCase();
+        const expected = normalized.replace(/^@/, "");
+        if (username === expected) {
+          isConfiguredContact = true;
+          cachedHumanPeerRaw = trimmed;
+        }
+      }
+    } catch { }
+  }
+
+  if (!override && !isConfiguredContact) {
+    return false;
+  }
+
+  if (!override) {
+    console.log("Received message from wake-up supervisor with no pending request. Ignoring.");
+    return true;
+  }
+
+  if (override.resolved) {
+    return true;
+  }
+
+  if (override.expiresAt <= Date.now()) {
+    override.resolved = true;
+    override.resolve({ type: "ignore", reason: "timeout" });
+    try {
+      await client.sendMessage(override.humanPeer, {
+        message: "⏰ That wake-up request already expired. The bot has resumed automatically.",
+      });
+    } catch { }
+    return true;
+  }
+
+  const parsed = parseHumanResponse((message?.message ?? "").toString(), override.suggestions);
+  if (!parsed) {
+    try {
+      await client.sendMessage(override.humanPeer, {
+        message: `Please choose 1-5 or type a custom reply to forward.`,
+      });
+    } catch { }
+    return true;
+  }
+
+  override.resolved = true;
+  if (parsed.kind === "ignore") {
+    override.resolve({ type: "ignore", reason: "dismissed" });
+  } else if (parsed.kind === "suggestion") {
+    override.resolve({ type: "selection", text: parsed.text, fromSuggestion: true, index: parsed.index + 1 });
+  } else {
+    override.resolve({ type: "selection", text: parsed.text, fromSuggestion: false });
+  }
+
+  return true;
+}
+
+async function applyReadingDelay(client: any, message: any, inputPeer: any): Promise<void> {
+  const waitBefore = randomInRange(
+    appConfig().messageDelays.waitBeforeTypingMs.min,
+    appConfig().messageDelays.waitBeforeTypingMs.max
+  );
+  
+  // Mark the incoming message as read right before starting the wait timer
+  try {
+    const peer = inputPeer || message.peerId;
+    const maxId = (message as any)?.id || 0;
+    if (peer && maxId) {
+      await (client as any)
+        .invoke(
+          new Api.messages.ReadHistory({
+            peer,
+            maxId,
+          })
+        )
+        .catch(() => { });
+    }
+  } catch (e) {
+    console.warn("Failed to mark message as read:", (e as any)?.message || e);
+  }
+  
+  await sleep(waitBefore);
+}
+
+async function applyTypingDelay(client: any, message: any, inputPeer: any): Promise<void> {
+  const typingFor = randomInRange(
+    appConfig().messageDelays.typingDurationMs.min,
+    appConfig().messageDelays.typingDurationMs.max
+  );
+  
+  const peer = inputPeer || message.peerId;
+  const sendTyping = () =>
+    (client as any)
+      .invoke(
+        new Api.messages.SetTyping({
+          peer,
+          action: new Api.SendMessageTypingAction(),
+        })
+      )
+      .catch(() => { });
+
+  // Fire immediately, then keep alive per config
+  sendTyping();
+  const interval = setInterval(sendTyping, appConfig().messageDelays.typingKeepaliveMs);
+
+  await sleep(typingFor);
+  
+  // Stop typing
+  clearInterval(interval);
+  (client as any)
+    .invoke(
+      new Api.messages.SetTyping({
+        peer,
+        action: new Api.SendMessageCancelAction(),
+      })
+    )
+    .catch(() => { });
+}
+
+async function sendImmediateReply(params: {
+  client: any;
+  message: any;
+  inputPeer: any;
+  replyText: string;
+  senderIdString: string;
+  chatId?: string;
+  startedAt: number;
+  personaRecord: any;
+}): Promise<boolean> {
+  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord } = params;
+  const trimmed = (replyText || "").trim();
+  if (!trimmed) {
+    console.warn("Manual override produced an empty reply; skipping send.");
+    return false;
+  }
+
+  // Apply reading delay (marks as read and waits)
+  await applyReadingDelay(client, message, inputPeer);
+  
+  // Apply typing delay (shows typing indicator and waits)
+  await applyTypingDelay(client, message, inputPeer);
+
+  let outboundRecorded = false;
+  try {
+    const isGroupContext = isPeerChatOrChannel(message?.peerId);
+    const sendOptions: any = { message: trimmed };
+    if (isGroupContext) {
+      sendOptions.replyTo = (message as any).id;
+    }
+    await client.sendMessage(inputPeer || message.peerId, sendOptions);
+    recordOutbound(senderIdString, Date.now() - startedAt);
+    outboundRecorded = true;
+    console.log(
+      `✅ Wake-up override reply sent to ${senderIdString} using ${formatPersonaLabel(
+        personaRecord?.personaId || getDefaultPersonaId(),
+      )}: "${trimmed}"`,
+    );
+    updateLastInteraction(senderIdString, chatId);
+    return true;
+  } catch (error) {
+    console.error("Failed to send manual override message:", error);
+  }
+
+  try {
+    const isGroupContext = isPeerChatOrChannel(message?.peerId);
+    const sendParams: any = {
+      peer: inputPeer || message.peerId,
+      message: trimmed,
+      randomId: bigInt(Math.floor(Math.random() * 1e16)),
+    };
+    if (isGroupContext) {
+      sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
+    }
+    await client.invoke(new Api.messages.SendMessage(sendParams));
+    if (!outboundRecorded) {
+      recordOutbound(senderIdString, Date.now() - startedAt);
+    }
+    console.log(
+      `✅ Wake-up override reply sent via API to ${senderIdString} using ${formatPersonaLabel(
+        personaRecord?.personaId || getDefaultPersonaId(),
+      )}: "${trimmed}"`,
+    );
+    updateLastInteraction(senderIdString, chatId);
+    return true;
+  } catch (apiError) {
+    console.error("Manual override API fallback failed:", apiError);
+  }
+
+  return false;
+}
+
+function formatRecentHistory(context: LLMContextEntry[], maxExchanges: number = 3): string {
+  // Filter out system messages and get actual conversation
+  const messages = context.filter(m => m.role !== "system");
+  
+  if (messages.length === 0) {
+    return "";
+  }
+  
+  // Exclude the last message (current incoming message) to avoid duplication
+  // Show the messages BEFORE the current one for context
+  const messagesBeforeCurrent = messages.slice(0, -1);
+  
+  if (messagesBeforeCurrent.length === 0) {
+    return "";
+  }
+  
+  // Get last N exchanges (each exchange is 2 messages: user + assistant)
+  const totalToShow = Math.min(maxExchanges * 2, messagesBeforeCurrent.length);
+  const recent = messagesBeforeCurrent.slice(-totalToShow);
+  
+  // Format each message compactly
+  const formatted = recent.map(msg => {
+    const icon = msg.role === "user" ? "👤" : "🤖";
+    const text = msg.content.length > 80
+      ? `${msg.content.slice(0, 77)}...`
+      : msg.content;
+    return `${icon} ${text}`;
+  }).join("\n");
+  
+  return formatted;
+}
+
+async function getSenderDisplayName(message: any): Promise<string> {
+  try {
+    const sender = await message.getSender?.();
+    if (!sender) return "";
+    
+    const parts: string[] = [];
+    if (typeof sender.firstName === "string" && sender.firstName.trim()) {
+      parts.push(sender.firstName.trim());
+    }
+    if (typeof sender.lastName === "string" && sender.lastName.trim()) {
+      parts.push(sender.lastName.trim());
+    }
+    
+    const fullName = parts.join(" ");
+    if (fullName) return fullName;
+    
+    if (typeof sender.username === "string" && sender.username.trim()) {
+      return `@${sender.username.trim()}`;
+    }
+    
+    if (typeof sender.title === "string" && sender.title.trim()) {
+      return sender.title.trim();
+    }
+  } catch (error) {
+    // Silently fail if we can't get sender info
+  }
+  return "";
+}
+
+async function attemptHumanOverride(params: {
+  client: any;
+  message: any;
+  inputPeer: any;
+  senderIdString: string;
+  chatId?: string;
+  conversationKey: string;
+  personaRecord: any;
+  llmContext: LLMContextEntry[];
+  messageText: string;
+  isAlwaysMode?: boolean;
+  startedAt: number;
+}): Promise<boolean> {
+  const {
+    client,
+    message,
+    inputPeer,
+    senderIdString,
+    chatId,
+    conversationKey,
+    personaRecord,
+    llmContext,
+    messageText,
+    isAlwaysMode,
+    startedAt,
+  } = params;
+
+  // Get appropriate delay based on mode
+  const fallbackDelay = getSupervisorFallbackDelay();
+  const modeLabel = isAlwaysMode ? 'always' : 'wake-up';
+  
+  console.log(`🤖 Supervisor contact requested (${modeLabel} mode, ${Math.max(1, Math.round(fallbackDelay / 1000))}s timeout)...`);
+  
+  // Get sender's display name
+  const senderName = await getSenderDisplayName(message);
+
+  const target = getConfiguredHumanTarget();
+  if (!target) {
+    await sleep(fallbackDelay);
+    console.log(`✅ No supervisor configured, proceeding with automated response (${modeLabel} mode)`);
+    return false;
+  }
+
+  const humanPeer = await resolveHumanPeer(client);
+  if (!humanPeer) {
+    await sleep(fallbackDelay);
+    console.log(`✅ Unable to resolve supervisor, proceeding with automated response (${modeLabel} mode)`);
+    return false;
+  }
+
+  let suggestions: Array<{text: string, emotion: string}> = [];
+  try {
+    suggestions = await getSuggestedReplies(llmContext, 5);
+  } catch (error) {
+    console.warn("Failed to generate wake-up suggestions:", (error as any)?.message || error);
+  }
+  suggestions = suggestions
+    .filter((entry): entry is {text: string, emotion: string} => {
+      if (typeof entry === 'string') return false;
+      return !!(entry?.text && entry.text.trim().length > 0);
+    })
+    .map((entry) => ({
+      text: entry.text.trim(),
+      emotion: entry.emotion || 'friendly'
+    }));
+  if (suggestions.length === 0) {
+    suggestions = [...FALLBACK_SUGGESTIONS];
+  }
+
+  const truncatedMessage = (() => {
+    const text = (messageText || "").trim();
+    if (text.length > 600) {
+      return `${text.slice(0, 600)}…`;
+    }
+    return text || "(no text)";
+  })();
+
+  const prettyDelay = Math.max(1, Math.round(fallbackDelay / 1000));
+  const overrideId = `supervisor_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  
+  // Extract persona information
+  const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
+  
+  // Format recent conversation history
+  const recentHistory = formatRecentHistory(llmContext, 3);
+  
+  // Create a clear, tappable message format with emoji buttons
+  const suggestionLines = suggestions.map((entry, idx) => {
+    const emoji = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][idx];
+    const text = typeof entry === 'string' ? entry : entry.text;
+    const emotion = typeof entry === 'string' ? '' : ` (${entry.emotion})`;
+    return `${emoji} **Option ${idx + 1}**${emotion}\n   ${text}`;
+  }).join("\n\n");
+  
+  // Format contact info with name if available
+  const contactInfo = senderName
+    ? `${senderName} (\`${senderIdString}\`)`
+    : `\`${senderIdString}\``;
+  
+  // Build notification with context sections
+  const notificationParts = [
+    `🔔 **SUPERVISOR REQUEST** (${modeLabel.toUpperCase()} MODE)`,
+    ``,
+    `🎭 Active Persona: **${personaLabel}**`,
+    `👤 Contact: ${contactInfo}${chatId ? ` · Chat ${chatId}` : ""}`,
+  ];
+  
+  // Add recent conversation history if available
+  if (recentHistory) {
+    notificationParts.push(
+      ``,
+      `📝 **Recent Context:**`,
+      recentHistory
+    );
+  }
+  
+  // Add current message and options
+  notificationParts.push(
+    ``,
+    `💬 **Current Message:**`,
+    truncatedMessage,
+    ``,
+    `━━━━━━━━━━━━━━━━`,
+    `📝 **Quick Reply Options:**`,
+    ``,
+    suggestionLines,
+    ``,
+    `━━━━━━━━━━━━━━━━`,
+    `⏰ Reply within **${prettyDelay}s**`,
+    ``,
+    `**To respond:**`,
+    `• Type **1**, **2**, **3**, **4**, or **5** to select an option`,
+    `• Type **ignore** to skip`,
+    `• Or send your own custom message`
+  );
+  
+  const notification = notificationParts.join("\n");
+
+  let sent: any;
+  try {
+    sent = await client.sendMessage(humanPeer.input, { message: notification });
+  } catch (error) {
+    console.warn(`Failed to notify supervisor (${modeLabel} mode):`, (error as any)?.message || error);
+    await sleep(fallbackDelay);
+    console.log(`✅ Proceeding with automated response (${modeLabel} mode)`);
+    return false;
+  }
+
+  const requestMessageId = typeof sent?.id === "number"
+    ? sent.id
+    : typeof (sent as any)?.message?.id === "number"
+      ? (sent as any).message.id
+      : undefined;
+
+  const decisionPromise = new Promise<HumanOverrideDecision>((resolve) => {
+    pendingHumanOverrides.set(overrideId, {
+      id: overrideId,
+      conversationKey,
+      humanPeerKey: humanPeer.key,
+      humanPeer: humanPeer.input,
+      requestMessageId,
+      suggestions,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + fallbackDelay,
+      resolved: false,
+      resolve,
+      original: {
+        inputPeer,
+        message,
+        senderIdString,
+        chatId,
+        personaRecord,
+        startedAt,
+      },
+    });
+  });
+
+  const timerPromise = sleep(fallbackDelay).then<HumanOverrideDecision>(() => ({
+    type: "ignore",
+    reason: "timeout",
+  }));
+
+  const decision = await Promise.race([decisionPromise, timerPromise]);
+  const stored = pendingHumanOverrides.get(overrideId);
+  if (stored) {
+    stored.resolved = true;
+    pendingHumanOverrides.delete(overrideId);
+  }
+
+  if (decision.type === "selection") {
+    // Send confirmation to supervisor IMMEDIATELY, before any delays
+    try {
+      const ack = decision.fromSuggestion && typeof decision.index === "number"
+        ? `✅ Sending suggestion ${decision.index}...`
+        : "✅ Sending your reply...";
+      await client.sendMessage(humanPeer.input, { message: ack });
+    } catch { }
+
+    // Now send the delayed reply to the user
+    const sentOk = await sendImmediateReply({
+      client,
+      message,
+      inputPeer,
+      replyText: decision.text,
+      senderIdString,
+      chatId,
+      startedAt,
+      personaRecord,
+    });
+    if (sentOk) {
+      return true;
+    }
+
+    try {
+      await client.sendMessage(humanPeer.input, {
+        message: "⚠️ I couldn't deliver that reply automatically. The bot will resume with its own response.",
+      });
+    } catch { }
+    return false;
+  }
+
+  if (decision.reason === "dismissed") {
+    try {
+      await client.sendMessage(humanPeer.input, {
+        message: "👍 Got it. Continuing with the automated response.",
+      });
+    } catch { }
+    console.log(`👋 Supervisor override skipped (${modeLabel} mode); continuing automated reply.`);
+    return false;
+  }
+
+  try {
+    await client.sendMessage(humanPeer.input, {
+      message: "⏰ No selection received. Resuming the automated reply.",
+    });
+  } catch { }
+  console.log(`⌛ Supervisor override timed out (${modeLabel} mode); falling back to automated response.`);
+  return false;
+}
+
 async function resolveInputPeerSafe(client: any, message: any): Promise<any | undefined> {
   try {
     const byMessage = await message.getInputChat?.();
@@ -375,6 +1092,10 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     return;
   }
 
+  if (await handleHumanOverrideMessage(message, client)) {
+    return;
+  }
+
   const senderIdString = senderId.toString();
   console.log(`Received message from ${senderIdString}: "${messageText}"`);
 
@@ -401,19 +1122,16 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   recordInbound(senderIdString);
 
-  // Wake up routine: check if bot has been inactive and needs to wake up
+  // Supervisor contact logic: check mode and determine if supervisor should be contacted
   const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
   const peerKey = toIdStringSafe(message?.peerId);
   const conversationKey = chatId ?? peerKey ?? senderIdString;
-  const needsWakeUp = shouldWakeUp(senderIdString, chatId);
-
-  if (needsWakeUp) {
-    const wakeUpDelay = getWakeUpDelay();
-    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay/1000)}s delay)...`);
-    await sleep(wakeUpDelay);
-    console.log(`✅ Bot awake and ready to respond`);
-  }
+  
+  // Check if supervisor should be contacted based on mode
+  const cfg = appConfig() as any;
+  const supervisorMode = cfg?.supervisor?.mode || 'wake-up';
+  const needsSupervisorContact = shouldContactSupervisor(senderIdString, chatId);
 
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
@@ -447,78 +1165,42 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // console.log("System Prompt:", personaPrompt);
   llmContext = convertContextToLLM(context, personaPrompt);
 
-
- // console.log("Context:", llmContext);
-
+  // console.log("Context:", llmContext);
 
   const composeStartedAt = Date.now();
+
+  // Contact supervisor if needed (based on mode: disabled/always/wake-up)
+  if (supervisorMode !== 'disabled' && needsSupervisorContact) {
+    const isAlwaysMode = supervisorMode === 'always';
+    const overrideHandled = await attemptHumanOverride({
+      client,
+      message,
+      inputPeer,
+      senderIdString,
+      chatId,
+      conversationKey,
+      personaRecord,
+      llmContext,
+      messageText: (messageText ?? "").toString(),
+      isAlwaysMode,
+      startedAt: composeStartedAt,
+    });
+    if (overrideHandled) {
+      return;
+    }
+  }
+
   const replyText = await getResponse(llmContext) || "Ttyl xoxo";
 
   // inputPeer already resolved above; if not available, we still try to proceed
 
-  // Centralized typing indicator control
-  const startTyping = () => {
-    const peer = inputPeer || message.peerId;
-    const sendTyping = () =>
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageTypingAction(),
-          })
-        )
-        .catch(() => { });
+  // Phase 1: Apply reading delay (marks as read and waits)
+  await applyReadingDelay(client, message, inputPeer);
 
-    // Fire immediately, then keep alive per config
-    sendTyping();
-    const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
+  // Phase 2: Apply typing delay (shows typing indicator and waits)
+  await applyTypingDelay(client, message, inputPeer);
 
-    return () => {
-      clearInterval(interval);
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageCancelAction(),
-          })
-        )
-        .catch(() => { });
-    };
-  };
-
-  // Phase 1: silent wait before typing
-  const waitBefore = randomInRange(
-    appConfig().waitBeforeTypingMs.min,
-    appConfig().waitBeforeTypingMs.max
-  );
-  // Mark the incoming message as read right before starting the wait timer
-  try {
-    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
-    const maxId = (message as any)?.id || 0;
-    if (peer && maxId) {
-      await (client as any)
-        .invoke(
-          new Api.messages.ReadHistory({
-            peer,
-            maxId,
-          })
-        )
-        .catch(() => { });
-    }
-  } catch (e) {
-    console.warn("Failed to mark message as read:", (e as any)?.message || e);
-  }
-  await sleep(waitBefore);
-
-  // Phase 2: show typing for configured duration
-  const typingFor = randomInRange(
-    appConfig().typingDurationMs.min,
-    appConfig().typingDurationMs.max
-  );
-  const stopTyping = startTyping();
-  await sleep(typingFor);
-
-  // Phase 3: send reply and stop typing
+  // Phase 3: send reply
   let outboundRecorded = false;
   try {
     const isGroupContext = isPeerChatOrChannel(message?.peerId);
@@ -562,8 +1244,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);
     }
-  } finally {
-    stopTyping();
   }
   // TODO: Add logic to delete or end chat in some cases
 }

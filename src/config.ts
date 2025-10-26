@@ -4,6 +4,22 @@ import granny from "./llm/personas/granny.json";
 
 type NumRange = { min: number; max: number };
 
+export type SupervisorMode = 'wake-up' | 'always' | 'disabled';
+
+export interface SupervisorConfig {
+  mode: SupervisorMode;
+  contact: string;
+  wakeUpDelayMs: NumRange;
+  alwaysFallbackDelayMs: NumRange;
+  sleepThresholdMs: number;
+}
+
+export interface MessageDelaysConfig {
+  waitBeforeTypingMs: NumRange;
+  typingDurationMs: NumRange;
+  typingKeepaliveMs: number;
+}
+
 export interface TelegramAccount {
   id: string;
   label: string;
@@ -33,29 +49,6 @@ function envNumber(name: string, fallback: number): number {
 }
 
 const config = {
-  // Initial silent wait before showing typing
-  waitBeforeTypingMs: {
-    min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 1_000),
-    max: envNumber("WAIT_BEFORE_TYPING_MS_MAX", 1_000),
-  } as NumRange,
-
-  // Duration to display typing indicator before sending
-  typingDurationMs: {
-    min: envNumber("TYPING_DURATION_MS_MIN", 1_000),
-    max: envNumber("TYPING_DURATION_MS_MAX", 1_000),
-  } as NumRange,
-
-  // How often to refresh the typing indicator (Telegram expects ~every 5s or less)
-  typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
-
-  // Wake up routine configuration
-  wakeUpDelayMs: {
-    min: envNumber("WAKE_UP_DELAY_MS_MIN", 1_000),
-    max: envNumber("WAKE_UP_DELAY_MS_MAX", 2_000),
-  } as NumRange,
-
-  // How long before the bot is considered "asleep" (in milliseconds)
-  sleepThresholdMs: envNumber("SLEEP_THRESHOLD_MS", 300_000), // 5 minutes default
   systemPrompt: JSON.stringify(granny),
   // Track currently selected persona filename for dashboard persistence
   currentPersona: "granny.json",
@@ -66,6 +59,32 @@ const config = {
   openrouterApiKey: "",
   telegramAccounts: [] as TelegramAccount[],
   activeAccountId: null as string | null,
+  // DEPRECATED: Use supervisor.contact instead. Kept for backward compatibility during migration.
+  humanEscalationChatId: "",
+  supervisor: {
+    mode: 'wake-up' as SupervisorMode,
+    contact: '',
+    wakeUpDelayMs: {
+      min: envNumber("WAKE_UP_DELAY_MS_MIN", 5_000),
+      max: envNumber("WAKE_UP_DELAY_MS_MAX", 10_000),
+    },
+    alwaysFallbackDelayMs: {
+      min: envNumber("ALWAYS_FALLBACK_DELAY_MS_MIN", 30_000),
+      max: envNumber("ALWAYS_FALLBACK_DELAY_MS_MAX", 60_000),
+    },
+    sleepThresholdMs: envNumber("SLEEP_THRESHOLD_MS", 300_000),
+  } as SupervisorConfig,
+  messageDelays: {
+    waitBeforeTypingMs: {
+      min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5_000),
+      max: envNumber("WAIT_BEFORE_TYPING_MS_MAX", 10_000),
+    },
+    typingDurationMs: {
+      min: envNumber("TYPING_DURATION_MS_MIN", 5_000),
+      max: envNumber("TYPING_DURATION_MS_MAX", 10_000),
+    },
+    typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
+  } as MessageDelaysConfig,
 };
 
 export const appConfig = () => config;
@@ -128,6 +147,9 @@ function persistConfig(): void {
       systemPrompt: (config as any).systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,
+      humanEscalationChatId: config.humanEscalationChatId,
+      supervisor: config.supervisor,
+      messageDelays: config.messageDelays,
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -144,6 +166,62 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>): void {
+  // Validate mode
+  if (supervisor.mode !== undefined) {
+    const validModes: SupervisorMode[] = ['wake-up', 'always', 'disabled'];
+    if (!validModes.includes(supervisor.mode)) {
+      throw new Error(`Invalid supervisor mode: ${supervisor.mode}. Must be one of: ${validModes.join(', ')}`);
+    }
+  }
+
+  // Validate contact - must be non-empty for non-disabled modes
+  if (supervisor.contact !== undefined) {
+    const contact = (supervisor.contact || '').trim();
+    const mode = supervisor.mode || config.supervisor.mode;
+    if (mode !== 'disabled' && !contact) {
+      throw new Error('Supervisor contact cannot be empty when mode is not disabled');
+    }
+  }
+
+  // Validate wakeUpDelayMs
+  if (supervisor.wakeUpDelayMs !== undefined) {
+    const { min, max } = supervisor.wakeUpDelayMs;
+    if (typeof min !== 'number' || typeof max !== 'number') {
+      throw new Error('wakeUpDelayMs min and max must be numbers');
+    }
+    if (min < 0 || max < 0) {
+      throw new Error('wakeUpDelayMs min and max must be non-negative');
+    }
+    if (min > max) {
+      throw new Error('wakeUpDelayMs min cannot be greater than max');
+    }
+  }
+
+  // Validate alwaysFallbackDelayMs
+  if (supervisor.alwaysFallbackDelayMs !== undefined) {
+    const { min, max } = supervisor.alwaysFallbackDelayMs;
+    if (typeof min !== 'number' || typeof max !== 'number') {
+      throw new Error('alwaysFallbackDelayMs min and max must be numbers');
+    }
+    if (min < 0 || max < 0) {
+      throw new Error('alwaysFallbackDelayMs min and max must be non-negative');
+    }
+    if (min > max) {
+      throw new Error('alwaysFallbackDelayMs min cannot be greater than max');
+    }
+  }
+
+  // Validate sleepThresholdMs
+  if (supervisor.sleepThresholdMs !== undefined) {
+    if (typeof supervisor.sleepThresholdMs !== 'number') {
+      throw new Error('sleepThresholdMs must be a number');
+    }
+    if (supervisor.sleepThresholdMs < 0) {
+      throw new Error('sleepThresholdMs must be non-negative');
+    }
+  }
+}
 
 export function setConfig(newConfig: Partial<typeof config>): void {
   if (Object.prototype.hasOwnProperty.call(newConfig, "telegramAccounts")) {
@@ -170,9 +248,80 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(newConfig, "humanEscalationChatId")) {
+    const raw = (newConfig as any).humanEscalationChatId;
+    if (typeof raw === "string") {
+      config.humanEscalationChatId = raw.trim();
+      // Migrate to supervisor.contact if not already set
+      if (!config.supervisor.contact) {
+        config.supervisor.contact = raw.trim();
+        console.log("Migrated humanEscalationChatId to supervisor.contact");
+      }
+    } else if (raw == null) {
+      config.humanEscalationChatId = "";
+    } else {
+      config.humanEscalationChatId = String(raw).trim();
+      // Migrate to supervisor.contact if not already set
+      if (!config.supervisor.contact) {
+        config.supervisor.contact = String(raw).trim();
+        console.log("Migrated humanEscalationChatId to supervisor.contact");
+      }
+    }
+  }
+
+  // Handle supervisor config updates
+  if (Object.prototype.hasOwnProperty.call(newConfig, "supervisor")) {
+    const supervisorUpdate = (newConfig as any).supervisor;
+    if (supervisorUpdate && typeof supervisorUpdate === 'object') {
+      // Validate before applying
+      validateSupervisorConfig(supervisorUpdate);
+      
+      // Apply updates
+      if (supervisorUpdate.mode !== undefined) {
+        config.supervisor.mode = supervisorUpdate.mode;
+      }
+      if (supervisorUpdate.contact !== undefined) {
+        const contact = typeof supervisorUpdate.contact === 'string'
+          ? supervisorUpdate.contact.trim()
+          : String(supervisorUpdate.contact || '').trim();
+        config.supervisor.contact = contact;
+        // Keep legacy field in sync
+        config.humanEscalationChatId = contact;
+      }
+      if (supervisorUpdate.wakeUpDelayMs !== undefined) {
+        config.supervisor.wakeUpDelayMs = supervisorUpdate.wakeUpDelayMs;
+      }
+      if (supervisorUpdate.alwaysFallbackDelayMs !== undefined) {
+        config.supervisor.alwaysFallbackDelayMs = supervisorUpdate.alwaysFallbackDelayMs;
+      }
+      if (supervisorUpdate.sleepThresholdMs !== undefined) {
+        config.supervisor.sleepThresholdMs = supervisorUpdate.sleepThresholdMs;
+      }
+    }
+  }
+
+  // Handle messageDelays config updates
+  if (Object.prototype.hasOwnProperty.call(newConfig, "messageDelays")) {
+    const messageDelaysUpdate = (newConfig as any).messageDelays;
+    if (messageDelaysUpdate && typeof messageDelaysUpdate === 'object') {
+      if (messageDelaysUpdate.waitBeforeTypingMs !== undefined) {
+        config.messageDelays.waitBeforeTypingMs = messageDelaysUpdate.waitBeforeTypingMs;
+      }
+      if (messageDelaysUpdate.typingDurationMs !== undefined) {
+        config.messageDelays.typingDurationMs = messageDelaysUpdate.typingDurationMs;
+      }
+      if (messageDelaysUpdate.typingKeepaliveMs !== undefined) {
+        config.messageDelays.typingKeepaliveMs = messageDelaysUpdate.typingKeepaliveMs;
+      }
+    }
+  }
+
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
+  delete (rest as any).humanEscalationChatId;
+  delete (rest as any).supervisor;
+  delete (rest as any).messageDelays;
   Object.assign(config, rest);
 
   persistConfig();
