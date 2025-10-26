@@ -860,6 +860,15 @@ async function attemptHumanOverride(params: {
   }
 
   if (decision.type === "selection") {
+    // Send confirmation to supervisor IMMEDIATELY, before any delays
+    try {
+      const ack = decision.fromSuggestion && typeof decision.index === "number"
+        ? `✅ Sending suggestion ${decision.index}...`
+        : "✅ Sending your reply...";
+      await client.sendMessage(humanPeer.input, { message: ack });
+    } catch { }
+
+    // Now send the delayed reply to the user
     const sentOk = await sendImmediateReply({
       client,
       message,
@@ -871,12 +880,6 @@ async function attemptHumanOverride(params: {
       personaRecord,
     });
     if (sentOk) {
-      try {
-        const ack = decision.fromSuggestion && typeof decision.index === "number"
-          ? `✅ Sent suggestion ${decision.index}. Thank you!`
-          : "✅ Sent your reply to the contact. Thank you!";
-        await client.sendMessage(humanPeer.input, { message: ack });
-      } catch { }
       return true;
     }
 
