@@ -1552,12 +1552,14 @@
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 12px;
             margin-top: 8px;
+            align-items: stretch;
         }
 
         .mode-option {
             position: relative;
             cursor: pointer;
-            display: block;
+            display: flex;
+            flex-direction: column;
         }
 
         .mode-option input[type="radio"] {
@@ -1577,6 +1579,7 @@
             background: var(--tab-bg);
             transition: all 0.2s ease;
             min-height: 80px;
+            height: 100%;
         }
 
         .mode-option:hover .mode-content {
