@@ -1,7 +1,7 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
-import path from "path";
+import path from "node:path";
 import {
   startBot,
   stopBot,

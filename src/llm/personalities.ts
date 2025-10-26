@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Define the directory path
 const directoryPath = path.join(__dirname, 'personas');
