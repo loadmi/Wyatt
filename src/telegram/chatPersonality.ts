@@ -106,11 +106,11 @@ async function loadStore(): Promise<void> {
     if (raw && typeof raw === "object") {
       for (const [chatId, entry] of Object.entries(raw)) {
         if (!chatId) continue;
-        const personaId = normalisePersonaId((entry as any)?.personaId);
-        const systemPrompt = typeof (entry as any)?.systemPrompt === "string" ? (entry as any).systemPrompt : "";
+        const personaId = normalisePersonaId(entry?.personaId);
+        const systemPrompt = typeof entry?.systemPrompt === "string" ? entry.systemPrompt : "";
         if (!personaId || !systemPrompt) continue;
-        const createdRaw = Number((entry as any)?.createdAt);
-        const updatedRaw = Number((entry as any)?.updatedAt);
+        const createdRaw = Number(entry?.createdAt);
+        const updatedRaw = Number(entry?.updatedAt);
         const createdAt = Number.isFinite(createdRaw) ? createdRaw : Number.isFinite(updatedRaw) ? updatedRaw : now();
         const updatedAt = Number.isFinite(updatedRaw) ? updatedRaw : createdAt;
         const record: ChatPersonaRecord = {
@@ -166,7 +166,7 @@ export function formatPersonaLabel(personaId: string): string {
 }
 
 export function getDefaultPersonaId(): string {
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const configured = normalisePersonaId(cfg?.currentPersona);
   if (configured) {
     return configured;
@@ -190,7 +190,7 @@ async function resolvePersonaPrompt(personaId: string): Promise<string> {
     return personaPromptCache.get(trimmed)!;
   }
 
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const defaultId = getDefaultPersonaId();
   if (trimmed === defaultId) {
     const configPrompt = typeof cfg?.systemPrompt === "string" ? cfg.systemPrompt.trim() : "";
@@ -212,7 +212,7 @@ async function resolvePersonaPrompt(personaId: string): Promise<string> {
 
 async function getDefaultPersonaRecord(): Promise<{ personaId: string; systemPrompt: string }> {
   const personaId = getDefaultPersonaId();
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const promptFromConfig = typeof cfg?.systemPrompt === "string" ? cfg.systemPrompt.trim() : "";
   if (promptFromConfig) {
     personaPromptCache.set(personaId, promptFromConfig);

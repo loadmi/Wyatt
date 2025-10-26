@@ -50,9 +50,9 @@ function looksLikeJsonError(text: string): boolean {
   try {
     const obj = JSON.parse(text);
     if (!obj || typeof obj !== 'object') return false;
-    if (typeof (obj as any).error !== 'undefined') return true;
-    if (typeof (obj as any).status === 'number' && (obj as any).status >= 400) return true;
-    const details = (obj as any).details;
+    if (typeof obj.error !== 'undefined') return true;
+    if (typeof obj.status === 'number' && obj.status >= 400) return true;
+    const details = obj.details;
     if (details && typeof details === 'object' && details.error) return true;
     return false;
   } catch {
@@ -204,7 +204,7 @@ async function callPollinations(messages: ChatMessage[]): Promise<{ ok: boolean;
 }
 
 async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{ ok: boolean; status: number; text: string }> {
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const key = (cfg.openrouterApiKey || '').trim();
   if (!key) {
     console.warn('[LLM] OpenRouter key missing. Add it in the dashboard settings.');
@@ -249,10 +249,10 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
 
 async function callProvider(messages: ChatMessage[]): Promise<{ ok: boolean; status: number; text: string }> {
   const cfg = appConfig();
-  const provider = (cfg as any).llmProvider as 'pollinations' | 'openrouter' | undefined;
+  const provider = cfg.llmProvider as 'pollinations' | 'openrouter' | undefined;
   let result: { ok: boolean; status: number; text: string };
   if (provider === 'openrouter') {
-    const model = (cfg as any).openrouterModel as string | undefined;
+    const model = cfg.openrouterModel as string | undefined;
     result = await callOpenRouter(messages, model || 'google/gemini-2.0-flash-001');
   } else {
     result = await callPollinations(messages);
@@ -266,7 +266,7 @@ export async function requestLLMCompletion(
   options?: { trimForProvider?: boolean; fallback?: string }
 ): Promise<string> {
   const { maxInput, maxSystem } = getInputLimits();
-  const provider = ((appConfig() as any).llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  const provider = (appConfig().llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
   let toSend = messages;
 
   const shouldTrim = options?.trimForProvider !== false && provider === 'pollinations';
@@ -412,14 +412,14 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
   ];
   const HARD_FALLBACK = FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)];
 
-  const provider = ((appConfig() as any).llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
-  let toSend = messages as ChatMessage[];
+  const provider = (appConfig().llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  let toSend = messages;
   if (provider === 'pollinations') {
-    const origChars = countChars(messages as ChatMessage[]);
-    const prepared = trimMessagesToLimit(messages as ChatMessage[], maxInput, maxSystem);
+    const origChars = countChars(messages);
+    const prepared = trimMessagesToLimit(messages, maxInput, maxSystem);
     const prepChars = countChars(prepared);
-    if (origChars !== prepChars || prepared.length !== (messages as ChatMessage[]).length) {
-      console.log(`[LLM] Compose: chars=${origChars}->${prepChars} msgs=${(messages as ChatMessage[]).length}->${prepared.length}`);
+    if (origChars !== prepChars || prepared.length !== messages.length) {
+      console.log(`[LLM] Compose: chars=${origChars}->${prepChars} msgs=${messages.length}->${prepared.length}`);
     }
     toSend = prepared;
   } else {

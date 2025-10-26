@@ -176,7 +176,7 @@ loadInteractionTracker().then(tracker => {
     interactionTracker.set(key, value);
   });
 }).catch(e => {
-  console.warn("Failed to initialize interaction tracker:", (e as any)?.message || e);
+  console.warn("Failed to initialize interaction tracker:", e?.message || e);
 });
 
 // Helper function to get cache key for interaction tracking
@@ -234,7 +234,7 @@ function getWakeUpDelay(): number {
 }
 
 function getConfiguredHumanTarget(): string | null {
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   // Prefer new supervisor.contact field, fallback to legacy humanEscalationChatId
   const raw = cfg?.supervisor?.contact || cfg?.humanEscalationChatId;
   if (typeof raw !== "string") return null;
@@ -244,7 +244,7 @@ function getConfiguredHumanTarget(): string | null {
 
 // Check if supervisor should be contacted based on mode and wake-up status
 function shouldContactSupervisor(senderId: string, chatId?: string): boolean {
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const mode = cfg?.supervisor?.mode || 'wake-up';
   
   // If disabled, never contact supervisor
@@ -267,7 +267,7 @@ function shouldContactSupervisor(senderId: string, chatId?: string): boolean {
 
 // Get appropriate fallback delay based on supervisor mode
 function getSupervisorFallbackDelay(): number {
-  const cfg = appConfig() as any;
+  const cfg = appConfig();
   const mode = cfg?.supervisor?.mode || 'wake-up';
   
   if (mode === 'always') {
@@ -303,7 +303,7 @@ async function resolveHumanPeer(client: any): Promise<{ input: any; key: string 
   for (const query of queries) {
     try {
       const entity = await client.getInputEntity(query);
-      const key = toIdString(entity) || toIdString((entity)?.peer) || toIdString(query) || target;
+      const key = toIdString(entity) || toIdString(entity?.peer) || toIdString(query) || target;
       cachedHumanPeerKey = key;
       cachedHumanPeerRaw = target;
       return { input: entity, key: key || target };
@@ -314,14 +314,14 @@ async function resolveHumanPeer(client: any): Promise<{ input: any; key: string 
 
   cachedHumanPeerKey = null;
   cachedHumanPeerRaw = null;
-  console.warn("Failed to resolve human escalation contact:", (lastError as any)?.message || lastError);
+  console.warn("Failed to resolve human escalation contact:", (lastError as Error)?.message || lastError);
   return null;
 }
 
 function findPendingOverrideForMessage(message: any): PendingHumanOverride | undefined {
   const replyId =
-    (message)?.replyToMsgId ||
-    (message)?.replyTo?.replyToMsgId;
+    message?.replyToMsgId ||
+    message?.replyTo?.replyToMsgId;
 
   const all = Array.from(pendingHumanOverrides.values()).filter((entry) => !entry.resolved);
   if (replyId) {
@@ -330,7 +330,7 @@ function findPendingOverrideForMessage(message: any): PendingHumanOverride | und
   }
 
   const peerKey = toIdString(message?.peerId);
-  const senderKey = toIdString((message?.fromId as any)?.userId);
+  const senderKey = toIdString(message?.fromId?.userId);
   if (peerKey || senderKey) {
     const matches = all.filter(
       (entry) => entry.humanPeerKey === peerKey || entry.humanPeerKey === senderKey,
@@ -390,10 +390,10 @@ async function getSelfIdentity(client: any): Promise<{ usernameLower: string | n
   }
   try {
     const me = await client.getMe();
-    const username = (me as any)?.username;
+    const username = me?.username;
     selfUsernameCached = username ? String(username).toLowerCase() : null;
     try {
-      const rawId = (me as any)?.id ?? (me as any)?._id;
+      const rawId = me?.id ?? me?._id;
       // Convert id to a stable string when possible
       if (rawId !== undefined && rawId !== null) {
         if (typeof rawId === "bigint") selfIdStringCached = String(rawId);
@@ -450,7 +450,7 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
 
   // Entity-based mention (@display name without username)
   try {
-    const entities = (message as any)?.entities;
+    const entities = message?.entities;
     if (Array.isArray(entities) && entities.length > 0 && self.idString) {
       for (const ent of entities) {
         // Mentions without @username carry a userId in the entity
@@ -458,7 +458,7 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
           ent instanceof Api.MessageEntityMentionName ||
           ent?.className === "MessageEntityMentionName"
         ) {
-          const entUserIdStr = toIdString((ent as any).userId);
+          const entUserIdStr = toIdString(ent.userId);
           if (entUserIdStr && self.idString && entUserIdStr === self.idString) {
             return true;
           }
@@ -466,8 +466,8 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
         // Also accept explicit @mention entities as a backup
         if (ent instanceof Api.MessageEntityMention || ent?.className === "MessageEntityMention") {
           try {
-            const offset = (ent as any).offset ?? 0;
-            const length = (ent as any).length ?? 0;
+            const offset = ent.offset ?? 0;
+            const length = ent.length ?? 0;
             const segment = text.substr(offset, length).toLowerCase();
             if (self.usernameLower && segment === "@" + self.usernameLower) return true;
           } catch { }
@@ -479,7 +479,7 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
   // Reply check: if user replied to one of our (outgoing) messages
   try {
     // Some libraries set message.mentioned when you're mentioned; accept it if present
-    if ((message as any)?.mentioned === true) return true;
+    if (message?.mentioned === true) return true;
 
     const hasReply = !!(message?.replyToMsgId || message?.replyTo?.replyToMsgId || message?.isReply);
     if (hasReply && typeof message.getReplyMessage === "function") {
@@ -509,7 +509,7 @@ export function convertContextToLLM(context: ContextEntry[], systemPrompt?: stri
   
   // Add system prompt first if provided (reuse trimmed value to avoid redundant trim())
   if (hasSystemPrompt) {
-    result[writeIndex++] = { role: "system", content: systemPrompt!.trim() };
+    result[writeIndex++] = { role: "system", content: systemPrompt.trim() };
   }
   
   // Convert context entries directly into pre-allocated array
@@ -530,7 +530,7 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
 
   const override = findPendingOverrideForMessage(message);
   const peerKey = toIdString(message?.peerId);
-  const senderKey = toIdString((message?.fromId as any)?.userId);
+  const senderKey = toIdString(message?.fromId?.userId);
   const candidates = [peerKey, senderKey];
 
   if (override && !candidates.includes(override.humanPeerKey)) {
@@ -559,7 +559,7 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
       const sender = await message.getSender?.();
       const usernameRaw: string | undefined =
         sender?.username ||
-        (Array.isArray((sender as any)?.usernames) ? (sender as any).usernames[0]?.username : undefined);
+        (Array.isArray(sender?.usernames) ? sender.usernames[0]?.username : undefined);
       if (usernameRaw) {
         const username = usernameRaw.toLowerCase();
         const expected = normalized.replace(/^@/, "");
@@ -626,9 +626,9 @@ async function applyReadingDelay(client: any, message: any, inputPeer: any): Pro
   // Mark the incoming message as read right before starting the wait timer
   try {
     const peer = inputPeer || message.peerId;
-    const maxId = (message as any)?.id || 0;
+    const maxId = message?.id || 0;
     if (peer && maxId) {
-      await (client as any)
+      await client
         .invoke(
           new Api.messages.ReadHistory({
             peer,
@@ -652,7 +652,7 @@ async function applyTypingDelay(client: any, message: any, inputPeer: any): Prom
   
   const peer = inputPeer || message.peerId;
   const sendTyping = () =>
-    (client as any)
+    client
       .invoke(
         new Api.messages.SetTyping({
           peer,
@@ -669,7 +669,7 @@ async function applyTypingDelay(client: any, message: any, inputPeer: any): Prom
   
   // Stop typing
   clearInterval(interval);
-  (client as any)
+  client
     .invoke(
       new Api.messages.SetTyping({
         peer,
@@ -709,7 +709,7 @@ async function sendMessageWithFallback(params: {
   try {
     const sendOptions: any = { message: trimmed };
     if (isGroupContext) {
-      sendOptions.replyTo = (message as any).id;
+      sendOptions.replyTo = message.id;
     }
     await client.sendMessage(inputPeer || message.peerId, sendOptions);
     recordOutbound(senderIdString, Date.now() - startedAt);
@@ -733,7 +733,7 @@ async function sendMessageWithFallback(params: {
       randomId: bigInt(Math.floor(Math.random() * 1e16)),
     };
     if (isGroupContext) {
-      sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
+      sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: message.id });
     }
     await client.invoke(new Api.messages.SendMessage(sendParams));
     if (!outboundRecorded) {
@@ -996,7 +996,7 @@ async function attemptHumanOverride(params: {
   const requestMessageId = typeof sent?.id === "number"
     ? sent.id
     : typeof (sent as any)?.message?.id === "number"
-      ? (sent as any).message.id
+      ? sent.message.id
       : undefined;
 
   const decisionPromise = new Promise<HumanOverrideDecision>((resolve) => {
@@ -1095,7 +1095,7 @@ async function resolveInputPeerSafe(client: any, message: any): Promise<any | un
     if (message?.peerId) return await client.getInputEntity(message.peerId);
   } catch { }
   try {
-    const uid = (message?.fromId as any)?.userId;
+    const uid = message?.fromId?.userId;
     if (uid) return await client.getInputEntity(uid);
   } catch { }
   return undefined;
@@ -1298,7 +1298,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     const conversationKey = chatId ?? peerKey ?? senderIdString;
     
     // Check if supervisor should be contacted based on mode
-    const cfg = appConfig() as any;
+    const cfg = appConfig();
     const supervisorMode = cfg?.supervisor?.mode || 'wake-up';
     const needsSupervisorContact = shouldContactSupervisor(senderIdString, chatId);
 

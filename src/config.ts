@@ -122,17 +122,17 @@ function generateAccountId(): string {
 
 function sanitizePersistedAccount(raw: any): TelegramAccount | null {
   if (!raw || typeof raw !== "object") return null;
-  const apiId = Number((raw as any).apiId);
-  const apiHash = typeof (raw as any).apiHash === "string" ? (raw as any).apiHash.trim() : "";
+  const apiId = Number(raw.apiId);
+  const apiHash = typeof raw.apiHash === "string" ? raw.apiHash.trim() : "";
   if (!Number.isFinite(apiId) || !apiHash) {
     return null;
   }
 
-  const labelRaw = typeof (raw as any).label === "string" ? (raw as any).label.trim() : "";
-  const idRaw = typeof (raw as any).id === "string" ? (raw as any).id.trim() : "";
-  const sessionRaw = typeof (raw as any).sessionString === "string" ? (raw as any).sessionString.trim() : "";
-  const createdAtRaw = Number((raw as any).createdAt);
-  const updatedAtRaw = Number((raw as any).updatedAt);
+  const labelRaw = typeof raw.label === "string" ? raw.label.trim() : "";
+  const idRaw = typeof raw.id === "string" ? raw.id.trim() : "";
+  const sessionRaw = typeof raw.sessionString === "string" ? raw.sessionString.trim() : "";
+  const createdAtRaw = Number(raw.createdAt);
+  const updatedAtRaw = Number(raw.updatedAt);
   const now = Date.now();
 
   return {
@@ -165,11 +165,11 @@ function persistConfig(): void {
     // Call async function without awaiting - fire and forget
     // This maintains backward compatibility with synchronous callers
     savePersistedState({
-      currentPersona: (config as any).currentPersona,
-      llmProvider: (config as any).llmProvider,
-      openrouterModel: (config as any).openrouterModel,
-      openrouterApiKey: (config as any).openrouterApiKey,
-      systemPrompt: (config as any).systemPrompt,
+      currentPersona: config.currentPersona,
+      llmProvider: config.llmProvider,
+      openrouterModel: config.openrouterModel,
+      openrouterApiKey: config.openrouterApiKey,
+      systemPrompt: config.systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,
       humanEscalationChatId: config.humanEscalationChatId,
@@ -253,7 +253,7 @@ export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>):
 
 export function setConfig(newConfig: Partial<typeof config>): void {
   if (Object.prototype.hasOwnProperty.call(newConfig, "telegramAccounts")) {
-    const rawAccounts = (newConfig as any).telegramAccounts;
+    const rawAccounts = newConfig.telegramAccounts;
     if (Array.isArray(rawAccounts)) {
       const sanitized = rawAccounts
         .map((entry) => sanitizePersistedAccount(entry))
@@ -268,7 +268,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   if (Object.prototype.hasOwnProperty.call(newConfig, "activeAccountId")) {
-    const idRaw = (newConfig as any).activeAccountId;
+    const idRaw = newConfig.activeAccountId;
     if (typeof idRaw === "string" && idRaw.trim()) {
       config.activeAccountId = idRaw.trim();
     } else if (idRaw === null) {
@@ -277,7 +277,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   if (Object.prototype.hasOwnProperty.call(newConfig, "humanEscalationChatId")) {
-    const raw = (newConfig as any).humanEscalationChatId;
+    const raw = newConfig.humanEscalationChatId;
     if (typeof raw === "string") {
       config.humanEscalationChatId = raw.trim();
       // Migrate to supervisor.contact if not already set
@@ -299,7 +299,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
 
   // Handle supervisor config updates
   if (Object.prototype.hasOwnProperty.call(newConfig, "supervisor")) {
-    const supervisorUpdate = (newConfig as any).supervisor;
+    const supervisorUpdate = newConfig.supervisor;
     if (supervisorUpdate && typeof supervisorUpdate === 'object') {
       // Validate before applying
       validateSupervisorConfig(supervisorUpdate);
@@ -330,7 +330,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
 
   // Handle messageDelays config updates
   if (Object.prototype.hasOwnProperty.call(newConfig, "messageDelays")) {
-    const messageDelaysUpdate = (newConfig as any).messageDelays;
+    const messageDelaysUpdate = newConfig.messageDelays;
     if (messageDelaysUpdate && typeof messageDelaysUpdate === 'object') {
       if (messageDelaysUpdate.waitBeforeTypingMs !== undefined) {
         config.messageDelays.waitBeforeTypingMs = messageDelaysUpdate.waitBeforeTypingMs;
@@ -346,7 +346,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
 
   // Handle historyCache config updates
   if (Object.prototype.hasOwnProperty.call(newConfig, "historyCache")) {
-    const historyCacheUpdate = (newConfig as any).historyCache;
+    const historyCacheUpdate = newConfig.historyCache;
     if (historyCacheUpdate && typeof historyCacheUpdate === 'object') {
       if (historyCacheUpdate.maxMessagesPerChat !== undefined) {
         config.historyCache.maxMessagesPerChat = historyCacheUpdate.maxMessagesPerChat;
@@ -358,12 +358,12 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   const rest: Partial<typeof config> = { ...newConfig };
-  delete (rest as any).telegramAccounts;
-  delete (rest as any).activeAccountId;
-  delete (rest as any).humanEscalationChatId;
-  delete (rest as any).supervisor;
-  delete (rest as any).messageDelays;
-  delete (rest as any).historyCache;
+  delete rest.telegramAccounts;
+  delete rest.activeAccountId;
+  delete rest.humanEscalationChatId;
+  delete rest.supervisor;
+  delete rest.messageDelays;
+  delete rest.historyCache;
   Object.assign(config, rest);
 
   persistConfig();
