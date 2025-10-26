@@ -80,10 +80,23 @@ function formatPersonaName(personaId) {
 
 class BotController {
     constructor() {
+        this._initializeDOMElements();
+        this._initializeState();
+        this._attachEventListeners();
+        this._initializeUI();
+        this._loadInitialData();
+        this._startPolling();
+        this._initializeCharts();
+    }
+
+    _initializeDOMElements() {
+        // Control buttons
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
         this.statusDiv = document.getElementById('status');
         this.logDiv = document.getElementById('log');
+        
+        // Persona and provider elements
         this.personaSelect = document.getElementById('personaSelect');
         this.providerSelect = document.getElementById('providerSelect');
         this.openrouterModelSelect = document.getElementById('openrouterModelSelect');
@@ -93,7 +106,15 @@ class BotController {
         this.openrouterApiKeySave = document.getElementById('openrouterApiKeySave');
         this.openrouterApiKeyClear = document.getElementById('openrouterApiKeyClear');
         this.openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
-        // Supervisor configuration elements
+        
+        this._initializeSupervisorElements();
+        this._initializeMessageDelayElements();
+        this._initializeMetricsElements();
+        this._initializeAccountElements();
+        this._initializeChatElements();
+    }
+
+    _initializeSupervisorElements() {
         this.supervisorModeRadios = document.querySelectorAll('input[name="supervisorMode"]');
         this.supervisorContactInput = document.getElementById('supervisorContactInput');
         this.wakeUpDelayMin = document.getElementById('wakeUpDelayMin');
@@ -106,8 +127,9 @@ class BotController {
         this.sleepThresholdGroup = document.getElementById('sleepThresholdGroup');
         this.supervisorSaveBtn = document.getElementById('supervisorSaveBtn');
         this.supervisorStatus = document.getElementById('supervisorStatus');
-        this._supervisorStatusTimer = null;
-        // Message delays configuration elements
+    }
+
+    _initializeMessageDelayElements() {
         this.readingDelayMin = document.getElementById('readingDelayMin');
         this.readingDelayMax = document.getElementById('readingDelayMax');
         this.typingDurationMin = document.getElementById('typingDurationMin');
@@ -115,7 +137,9 @@ class BotController {
         this.typingKeepaliveInput = document.getElementById('typingKeepaliveInput');
         this.messageDelaysSaveBtn = document.getElementById('messageDelaysSaveBtn');
         this.messageDelaysStatus = document.getElementById('messageDelaysStatus');
-        this._messageDelaysStatusTimer = null;
+    }
+
+    _initializeMetricsElements() {
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -127,55 +151,23 @@ class BotController {
         this.leaderboardBody = document.getElementById('leaderboardBody');
         this.throughputCanvas = document.getElementById('throughputChart');
         this.providerCanvas = document.getElementById('providerChart');
-        this.timelineChart = null;
-        this.providerChart = null;
-        this.providerPalette = ['#60a5fa', '#f472b6', '#34d399', '#facc15', '#a78bfa', '#f97316'];
-        this.numberFormatter = new Intl.NumberFormat();
-        this.metricsInterval = null;
-        this.lastMetricsError = null;
-        this.botIsRunning = false;
+    }
+
+    _initializeAccountElements() {
         this.accountList = document.getElementById('accountList');
         this.accountForm = document.getElementById('accountForm');
         this.accountFormTitle = document.getElementById('accountFormTitle');
         this.accountNotice = document.getElementById('accountNotice');
         this.accountIdInput = document.getElementById('accountId');
-
-        if (this.openrouterApiKeySave) {
-            this.openrouterApiKeySave.addEventListener('click', () => this.saveOpenrouterKey());
-        }
-        // Key is visible by default; no reveal/hide toggle
-        if (this.openrouterApiKeyClear) {
-            this.openrouterApiKeyClear.addEventListener('click', () => {
-                if (this.openrouterApiKeyInput) this.openrouterApiKeyInput.value = '';
-                this.saveOpenrouterKey();
-            });
-        }
-        // Supervisor configuration event listeners
-        if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
-            for (const radio of this.supervisorModeRadios) {
-                radio.addEventListener('change', () => this.updateSupervisorUIState());
-            }
-        }
-        if (this.supervisorSaveBtn) {
-            this.supervisorSaveBtn.addEventListener('click', () => this.saveSupervisorConfig());
-        }
-        // Message delays configuration event listener
-        if (this.messageDelaysSaveBtn) {
-            this.messageDelaysSaveBtn.addEventListener('click', () => this.saveMessageDelaysConfig());
-        }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
         this.accountApiHashInput = document.getElementById('accountApiHash');
         this.accountSessionInput = document.getElementById('accountSession');
         this.accountSaveBtn = document.getElementById('accountSaveBtn');
         this.accountCancelBtn = document.getElementById('accountCancelBtn');
-        this.accounts = [];
-        this.activeAccountId = null;
-        this.hasActiveAccount = false;
-        this._accountNoticeTimer = null;
-        this._loginPollInterval = null;
-        this._loginPollBusy = false;
-        this._escalationStatusTimer = null;
+    }
+
+    _initializeChatElements() {
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
@@ -196,6 +188,37 @@ class BotController {
         this.chatSidebar = document.querySelector('.chat-sidebar');
         this.chatToggleSidebarBtn = document.getElementById('chatToggleSidebar');
         this.chatCloseSidebarBtn = document.getElementById('chatCloseSidebar');
+    }
+
+    _initializeState() {
+        // Timers
+        this._supervisorStatusTimer = null;
+        this._messageDelaysStatusTimer = null;
+        this._accountNoticeTimer = null;
+        this._loginPollInterval = null;
+        this._loginPollBusy = false;
+        this._escalationStatusTimer = null;
+        this._chatStatusTimer = null;
+        
+        // Charts
+        this.timelineChart = null;
+        this.providerChart = null;
+        this.providerPalette = ['#60a5fa', '#f472b6', '#34d399', '#facc15', '#a78bfa', '#f97316'];
+        
+        // Metrics
+        this.numberFormatter = new Intl.NumberFormat();
+        this.metricsInterval = null;
+        this.lastMetricsError = null;
+        
+        // Bot state
+        this.botIsRunning = false;
+        
+        // Account state
+        this.accounts = [];
+        this.activeAccountId = null;
+        this.hasActiveAccount = false;
+        
+        // Chat state
         this.chatListData = [];
         this.filteredChats = [];
         this.activeChatId = null;
@@ -207,7 +230,6 @@ class BotController {
         this.chatBlending = false;
         this.chatAutoScroll = true;
         this.chatSearchTerm = '';
-        this._chatStatusTimer = null;
         this.chatRenderCache = new Map();
         this.currentTab = 'configuration';
         this.chatRefreshRates = {
@@ -216,6 +238,8 @@ class BotController {
             rabbit: { interval: 2000, listEvery: 5 },
         };
         this.chatRefreshSpeed = this.loadChatRefreshSpeed();
+        
+        // Persona state
         this.availablePersonas = [];
         this.globalPersonaId = null;
         this.activeChatPersonaId = null;
@@ -223,12 +247,48 @@ class BotController {
         this.activeChatPersonaUpdatedAt = null;
         this._suppressChatPersonaChange = false;
         this.chatPersonaBusy = false;
+    }
 
+    _attachEventListeners() {
+        this._attachControlListeners();
+        this._attachConfigListeners();
+        this._attachAccountListeners();
+        this._attachChatListeners();
+        this._attachMobileListeners();
+    }
+
+    _attachControlListeners() {
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
         this.personaSelect.addEventListener('change', () => this.changePersona());
         this.providerSelect.addEventListener('change', () => this.changeProvider());
         this.openrouterModelSelect.addEventListener('change', () => this.changeOpenRouterModel());
+    }
+
+    _attachConfigListeners() {
+        if (this.openrouterApiKeySave) {
+            this.openrouterApiKeySave.addEventListener('click', () => this.saveOpenrouterKey());
+        }
+        if (this.openrouterApiKeyClear) {
+            this.openrouterApiKeyClear.addEventListener('click', () => {
+                if (this.openrouterApiKeyInput) this.openrouterApiKeyInput.value = '';
+                this.saveOpenrouterKey();
+            });
+        }
+        if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
+            for (const radio of this.supervisorModeRadios) {
+                radio.addEventListener('change', () => this.updateSupervisorUIState());
+            }
+        }
+        if (this.supervisorSaveBtn) {
+            this.supervisorSaveBtn.addEventListener('click', () => this.saveSupervisorConfig());
+        }
+        if (this.messageDelaysSaveBtn) {
+            this.messageDelaysSaveBtn.addEventListener('click', () => this.saveMessageDelaysConfig());
+        }
+    }
+
+    _attachAccountListeners() {
         if (this.accountForm) {
             this.accountForm.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -238,6 +298,9 @@ class BotController {
         if (this.accountCancelBtn) {
             this.accountCancelBtn.addEventListener('click', () => this.resetAccountForm());
         }
+    }
+
+    _attachChatListeners() {
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
         }
@@ -249,7 +312,6 @@ class BotController {
                 });
             }
         }
-        this.updateChatSpeedToggleUI();
         if (this.chatSearchInput) {
             this.chatSearchInput.addEventListener('input', () => this.handleChatSearch());
         }
@@ -268,18 +330,8 @@ class BotController {
         if (this.chatPersonaResetBtn) {
             this.chatPersonaResetBtn.addEventListener('click', () => this.resetActiveChatPersona());
         }
-        if (this.chatToggleSidebarBtn) {
-            this.chatToggleSidebarBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleMobileSidebar();
-            });
-        }
-        if (this.chatCloseSidebarBtn) {
-            this.chatCloseSidebarBtn.addEventListener('click', () => this.closeMobileSidebar());
-        }
         if (this.chatMessageInput) {
             this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
-            // Send on Enter, newline on Shift+Enter
             this.chatMessageInput.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
@@ -291,9 +343,19 @@ class BotController {
         if (this.chatMessagesEl) {
             this.chatMessagesEl.addEventListener('scroll', () => this.handleChatScroll());
         }
+    }
+
+    _attachMobileListeners() {
+        if (this.chatToggleSidebarBtn) {
+            this.chatToggleSidebarBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleMobileSidebar();
+            });
+        }
+        if (this.chatCloseSidebarBtn) {
+            this.chatCloseSidebarBtn.addEventListener('click', () => this.closeMobileSidebar());
+        }
         if (this.chatPanel) {
-            // Close when tapping the dimmed overlay (outside the sidebar),
-            // but ignore clicks on the toggle button itself.
             this.chatPanel.addEventListener('click', (e) => {
                 if (!this.chatPanel.classList.contains('mobile-sidebar-open')) return;
                 const sidebar = this.chatSidebar || document.querySelector('.chat-sidebar');
@@ -305,40 +367,34 @@ class BotController {
                 }
             });
         }
-        // Close mobile sidebar on Escape
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeMobileSidebar();
         });
-        // Ensure sidebar closes when resizing to desktop
         globalThis.window.addEventListener('resize', () => {
             if (!this.isMobile()) this.closeMobileSidebar();
         });
+    }
 
+    _initializeUI() {
         this.updateChatStatus('Select a chat to preview live messages.', 'info');
         this.updateChatComposerState();
+        this.updateChatSpeedToggleUI();
+    }
 
-        // Check initial status
+    _loadInitialData() {
         this.checkStatus();
-
-        // Load available personalities
         this.loadPersonalities();
-
-        // Load LLM configuration
         this.loadLLMConfig();
-
-        // Load supervisor configuration
         this.loadSupervisorConfig();
-
-        // Load message delays configuration
         this.loadMessageDelaysConfig();
-
-        // Load Telegram accounts
         this.loadAccounts();
+    }
 
-        // Check status every 5 seconds
+    _startPolling() {
         setInterval(() => this.checkStatus(), 5000);
+    }
 
-        // Initialize charts if Chart.js is available; otherwise continue without graphs
+    _initializeCharts() {
         try {
             if (typeof globalThis.window !== 'undefined' && globalThis.window.Chart) {
                 this.setupMetricsDashboard();
@@ -349,7 +405,6 @@ class BotController {
             try {
                 this.log('Charts init failed, continuing without graphs');
             } catch (logError) {
-                // Intentionally ignore logging errors - charts are optional feature
                 console.error('Chart initialization and logging both failed:', error);
             }
         }
@@ -548,135 +603,141 @@ class BotController {
     }
 
     async loadSupervisorConfig() {
+        this._clearSupervisorStatusTimer();
+        try {
+            const data = await this._fetchSupervisorConfig();
+            this._applySupervisorConfigToUI(data);
+            this._clearSupervisorStatus();
+            this.log('Supervisor configuration loaded');
+        } catch (error) {
+            this._showSupervisorError('Failed to load configuration', error);
+        }
+    }
+
+    _clearSupervisorStatusTimer() {
         if (this._supervisorStatusTimer) {
             clearTimeout(this._supervisorStatusTimer);
             this._supervisorStatusTimer = null;
         }
-        try {
-            const response = await fetch('/api/config/supervisor');
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            const data = await response.json();
-            
-            // Set mode
-            const mode = data.mode || 'wake-up';
-            if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
-                for (const radio of this.supervisorModeRadios) {
-                    radio.checked = radio.value === mode;
-                }
-            }
-            
-            // Set contact
-            if (this.supervisorContactInput) {
-                this.supervisorContactInput.value = data.contact || '';
-            }
-            
-            // Set wake-up delays (convert ms to seconds)
-            if (this.wakeUpDelayMin && data.wakeUpDelayMs && data.wakeUpDelayMs.min) {
-                this.wakeUpDelayMin.value = Math.round(data.wakeUpDelayMs.min / 1000);
-            }
-            if (this.wakeUpDelayMax && data.wakeUpDelayMs && data.wakeUpDelayMs.max) {
-                this.wakeUpDelayMax.value = Math.round(data.wakeUpDelayMs.max / 1000);
-            }
-            
-            // Set always delays (convert ms to seconds)
-            if (this.alwaysDelayMin && data.alwaysFallbackDelayMs && data.alwaysFallbackDelayMs.min) {
-                this.alwaysDelayMin.value = Math.round(data.alwaysFallbackDelayMs.min / 1000);
-            }
-            if (this.alwaysDelayMax && data.alwaysFallbackDelayMs && data.alwaysFallbackDelayMs.max) {
-                this.alwaysDelayMax.value = Math.round(data.alwaysFallbackDelayMs.max / 1000);
-            }
-            
-            // Set sleep threshold (convert ms to seconds)
-            if (this.sleepThresholdInput && data.sleepThresholdMs) {
-                this.sleepThresholdInput.value = (data.sleepThresholdMs / 1000).toFixed(1);
-            }
-            
-            // Update UI state based on mode
-            this.updateSupervisorUIState();
-            
-            if (this.supervisorStatus) {
-                this.supervisorStatus.textContent = '';
-                delete this.supervisorStatus.dataset.variant;
-            }
-            
-            this.log('Supervisor configuration loaded');
-        } catch (error) {
-            if (this.supervisorStatus) {
-                this.supervisorStatus.textContent = 'Failed to load configuration';
-                this.supervisorStatus.dataset.variant = 'error';
-            }
-            this.log('❌ Error loading supervisor config: ' + error.message);
-            this._supervisorStatusTimer = setTimeout(() => {
-                if (this.supervisorStatus) {
-                    this.supervisorStatus.textContent = '';
-                    delete this.supervisorStatus.dataset.variant;
-                }
-                this._supervisorStatusTimer = null;
-            }, 4000);
+    }
+
+    async _fetchSupervisorConfig() {
+        const response = await fetch('/api/config/supervisor');
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
         }
+        return await response.json();
+    }
+
+    _applySupervisorConfigToUI(data) {
+        const mode = data.mode || 'wake-up';
+        this._setSupervisorMode(mode);
+        this._setSupervisorContact(data.contact);
+        this._setSupervisorDelays(data);
+        this.updateSupervisorUIState();
+    }
+
+    _setSupervisorMode(mode) {
+        if (!this.supervisorModeRadios || this.supervisorModeRadios.length === 0) return;
+        for (const radio of this.supervisorModeRadios) {
+            radio.checked = radio.value === mode;
+        }
+    }
+
+    _setSupervisorContact(contact) {
+        if (this.supervisorContactInput) {
+            this.supervisorContactInput.value = contact || '';
+        }
+    }
+
+    _setSupervisorDelays(data) {
+        if (this.wakeUpDelayMin && data.wakeUpDelayMs?.min) {
+            this.wakeUpDelayMin.value = Math.round(data.wakeUpDelayMs.min / 1000);
+        }
+        if (this.wakeUpDelayMax && data.wakeUpDelayMs?.max) {
+            this.wakeUpDelayMax.value = Math.round(data.wakeUpDelayMs.max / 1000);
+        }
+        if (this.alwaysDelayMin && data.alwaysFallbackDelayMs?.min) {
+            this.alwaysDelayMin.value = Math.round(data.alwaysFallbackDelayMs.min / 1000);
+        }
+        if (this.alwaysDelayMax && data.alwaysFallbackDelayMs?.max) {
+            this.alwaysDelayMax.value = Math.round(data.alwaysFallbackDelayMs.max / 1000);
+        }
+        if (this.sleepThresholdInput && data.sleepThresholdMs) {
+            this.sleepThresholdInput.value = (data.sleepThresholdMs / 1000).toFixed(1);
+        }
+    }
+
+    _clearSupervisorStatus() {
+        if (this.supervisorStatus) {
+            this.supervisorStatus.textContent = '';
+            delete this.supervisorStatus.dataset.variant;
+        }
+    }
+
+    _showSupervisorError(message, error) {
+        if (this.supervisorStatus) {
+            this.supervisorStatus.textContent = message;
+            this.supervisorStatus.dataset.variant = 'error';
+        }
+        this.log('❌ Error loading supervisor config: ' + error.message);
+        this._supervisorStatusTimer = setTimeout(() => {
+            this._clearSupervisorStatus();
+            this._supervisorStatusTimer = null;
+        }, 4000);
     }
 
     updateSupervisorUIState() {
         if (!this.supervisorModeRadios || this.supervisorModeRadios.length === 0) return;
         
-        // Get selected mode
-        let selectedMode = 'wake-up';
+        const selectedMode = this._getSelectedSupervisorMode();
+        this._updateContactInputState(selectedMode);
+        this._updateDelayGroupsVisibility(selectedMode);
+        this._updateDelayInputsState(selectedMode);
+    }
+
+    _getSelectedSupervisorMode() {
         for (const radio of this.supervisorModeRadios) {
             if (radio.checked) {
-                selectedMode = radio.value;
+                return radio.value;
             }
         }
-        
-        // Update contact input state
-        if (this.supervisorContactInput) {
-            const isDisabled = selectedMode === 'disabled';
-            this.supervisorContactInput.disabled = isDisabled;
-            if (isDisabled) {
-                this.supervisorContactInput.style.opacity = '0.5';
-            } else {
-                this.supervisorContactInput.style.opacity = '1';
-            }
+        return 'wake-up';
+    }
+
+    _updateContactInputState(selectedMode) {
+        if (!this.supervisorContactInput) return;
+        const isDisabled = selectedMode === 'disabled';
+        this.supervisorContactInput.disabled = isDisabled;
+        this.supervisorContactInput.style.opacity = isDisabled ? '0.5' : '1';
+    }
+
+    _updateDelayGroupsVisibility(selectedMode) {
+        this._toggleDelayGroup(this.wakeUpDelayGroup, selectedMode === 'wake-up');
+        this._toggleDelayGroup(this.alwaysDelayGroup, selectedMode === 'always');
+        this._toggleDelayGroup(this.sleepThresholdGroup, selectedMode === 'wake-up');
+    }
+
+    _toggleDelayGroup(group, shouldShow) {
+        if (!group) return;
+        if (shouldShow) {
+            group.style.display = '';
+            group.classList.remove('disabled');
+        } else {
+            group.style.display = 'none';
         }
-        
-        // Show/hide delay groups based on mode
-        if (this.wakeUpDelayGroup) {
-            if (selectedMode === 'wake-up') {
-                this.wakeUpDelayGroup.style.display = '';
-                this.wakeUpDelayGroup.classList.remove('disabled');
-            } else {
-                this.wakeUpDelayGroup.style.display = 'none';
-            }
-        }
-        
-        if (this.alwaysDelayGroup) {
-            if (selectedMode === 'always') {
-                this.alwaysDelayGroup.style.display = '';
-                this.alwaysDelayGroup.classList.remove('disabled');
-            } else {
-                this.alwaysDelayGroup.style.display = 'none';
-            }
-        }
-        
-        if (this.sleepThresholdGroup) {
-            if (selectedMode === 'wake-up') {
-                this.sleepThresholdGroup.style.display = '';
-                this.sleepThresholdGroup.classList.remove('disabled');
-            } else {
-                this.sleepThresholdGroup.style.display = 'none';
-            }
-        }
-        
-        // Disable all delay inputs when mode is disabled
+    }
+
+    _updateDelayInputsState(selectedMode) {
         const allDelayInputs = [
             this.wakeUpDelayMin, this.wakeUpDelayMax,
             this.alwaysDelayMin, this.alwaysDelayMax,
             this.sleepThresholdInput
         ];
+        const isDisabled = selectedMode === 'disabled';
         for (const input of allDelayInputs) {
             if (input) {
-                input.disabled = selectedMode === 'disabled';
+                input.disabled = isDisabled;
             }
         }
     }
