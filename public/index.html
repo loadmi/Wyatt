@@ -1416,6 +1416,230 @@
                 min-height: 300px;
             }
         }
+
+        /* Supervisor Configuration Styles */
+        .info-icon {
+            display: inline-block;
+            margin-left: 8px;
+            font-size: 0.9em;
+            opacity: 0.7;
+            cursor: help;
+            transition: opacity 0.2s ease;
+        }
+
+        .info-icon:hover {
+            opacity: 1;
+        }
+
+        .supervisor-config-section {
+            display: grid;
+            gap: 24px;
+        }
+
+        .supervisor-mode-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .mode-option {
+            position: relative;
+            cursor: pointer;
+            display: block;
+        }
+
+        .mode-option input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .mode-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border: 2px solid var(--tab-border);
+            border-radius: 12px;
+            background: var(--tab-bg);
+            transition: all 0.2s ease;
+            min-height: 80px;
+        }
+
+        .mode-option:hover .mode-content {
+            border-color: rgba(37, 99, 235, 0.4);
+            background: var(--tab-active-bg);
+            transform: translateY(-2px);
+        }
+
+        .mode-option input[type="radio"]:checked + .mode-content {
+            border-color: #2563eb;
+            background: var(--tab-active-bg);
+            box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+        }
+
+        .mode-option input[type="radio"]:focus-visible + .mode-content {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .mode-icon {
+            font-size: 2em;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .mode-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .mode-label {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--heading);
+        }
+
+        .mode-description {
+            font-size: 0.85rem;
+            color: var(--subtle);
+            line-height: 1.3;
+        }
+
+        .supervisor-delays-section {
+            display: grid;
+            gap: 20px;
+        }
+
+        .supervisor-delay-group {
+            padding: 16px;
+            background: var(--log-bg);
+            border: 1px solid var(--log-border);
+            border-radius: 10px;
+            transition: opacity 0.3s ease, max-height 0.3s ease;
+        }
+
+        .supervisor-delay-group.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .delay-inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .delay-input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            position: relative;
+        }
+
+        .delay-sublabel {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--heading);
+        }
+
+        .delay-input-wrapper input[type="number"] {
+            padding-right: 12px;
+        }
+
+        .input-suffix {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.85rem;
+            color: var(--subtle);
+            pointer-events: none;
+        }
+
+        .delay-input-wrapper:has(.input-suffix) input {
+            padding-right: 80px;
+        }
+
+        .supervisor-save-btn {
+            background: var(--button-start-bg);
+            color: var(--btn-text);
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .supervisor-save-btn:hover:not(:disabled) {
+            background: var(--button-start-bg-hover);
+            transform: translateY(-1px);
+        }
+
+        .supervisor-save-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #supervisorStatus {
+            color: var(--subtle);
+            font-size: 0.9rem;
+        }
+
+        #supervisorStatus[data-variant="success"] {
+            color: #86efac;
+        }
+
+        #supervisorStatus[data-variant="error"] {
+            color: #fca5a5;
+        }
+
+        /* Mobile responsiveness for supervisor config */
+        @media (max-width: 768px) {
+            .supervisor-mode-selector {
+                grid-template-columns: 1fr;
+            }
+
+            .mode-content {
+                min-height: 70px;
+                padding: 14px;
+            }
+
+            .mode-icon {
+                font-size: 1.8em;
+            }
+
+            .delay-inputs {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .mode-content {
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .mode-icon {
+                font-size: 1.5em;
+            }
+
+            .mode-label {
+                font-size: 0.95rem;
+            }
+
+            .mode-description {
+                font-size: 0.8rem;
+            }
+        }
     </style>
 </head>
 
@@ -1556,16 +1780,100 @@
                     </div>
                 </div>
                 <div class="panel-card">
-                    <h2 class="panel-title">Wake-Up Overrides</h2>
-                    <p class="panel-subtext">Forward incoming messages to a trusted Telegram contact when the bot is waking up after inactivity. They can choose a suggested reply or write their own before the bot responds automatically.</p>
-                    <div class="form-field">
-                        <label for="escalationContactInput">Supervisor contact or chat</label>
-                        <input type="text" id="escalationContactInput" placeholder="@username or numeric ID" autocomplete="off">
-                        <small>Leave blank to disable manual wake-up review. Make sure the active Telegram account can message this contact.</small>
-                    </div>
-                    <div class="inline-actions">
-                        <button type="button" id="escalationSaveBtn">Save</button>
-                        <small id="escalationStatus" aria-live="polite"></small>
+                    <h2 class="panel-title">
+                        Supervisor Configuration
+                        <span class="info-icon" title="Configure when and how the supervisor is contacted for message review">ℹ️</span>
+                    </h2>
+                    <p class="panel-subtext">Control supervisor involvement in bot conversations. The supervisor can review and approve messages before they're sent automatically.</p>
+                    
+                    <div class="supervisor-config-section">
+                        <div class="form-field">
+                            <label>Supervisor Mode</label>
+                            <div class="supervisor-mode-selector">
+                                <label class="mode-option">
+                                    <input type="radio" name="supervisorMode" value="wake-up" checked>
+                                    <span class="mode-content">
+                                        <span class="mode-icon">⏰</span>
+                                        <span class="mode-details">
+                                            <span class="mode-label">Wake-Up</span>
+                                            <span class="mode-description">Contact supervisor after inactivity</span>
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="mode-option">
+                                    <input type="radio" name="supervisorMode" value="always">
+                                    <span class="mode-content">
+                                        <span class="mode-icon">👁️</span>
+                                        <span class="mode-details">
+                                            <span class="mode-label">Always</span>
+                                            <span class="mode-description">Review every message</span>
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="mode-option">
+                                    <input type="radio" name="supervisorMode" value="disabled">
+                                    <span class="mode-content">
+                                        <span class="mode-icon">🚫</span>
+                                        <span class="mode-details">
+                                            <span class="mode-label">Disabled</span>
+                                            <span class="mode-description">No supervisor contact</span>
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="supervisorContactInput">Supervisor Contact</label>
+                            <input type="text" id="supervisorContactInput" placeholder="@username or chat ID" autocomplete="off">
+                            <small>Telegram username (e.g., @username) or numeric chat ID. Required for non-disabled modes.</small>
+                        </div>
+
+                        <div class="supervisor-delays-section">
+                            <div class="form-field supervisor-delay-group" id="wakeUpDelayGroup">
+                                <label>Wake-Up Mode Timeout</label>
+                                <div class="delay-inputs">
+                                    <div class="delay-input-wrapper">
+                                        <label for="wakeUpDelayMin" class="delay-sublabel">Min (seconds)</label>
+                                        <input type="number" id="wakeUpDelayMin" min="1" max="60" step="1" value="5">
+                                    </div>
+                                    <div class="delay-input-wrapper">
+                                        <label for="wakeUpDelayMax" class="delay-sublabel">Max (seconds)</label>
+                                        <input type="number" id="wakeUpDelayMax" min="1" max="60" step="1" value="10">
+                                    </div>
+                                </div>
+                                <small>Time to wait for supervisor response before auto-sending (5-10s default)</small>
+                            </div>
+
+                            <div class="form-field supervisor-delay-group" id="alwaysDelayGroup" style="display: none;">
+                                <label>Always Mode Timeout</label>
+                                <div class="delay-inputs">
+                                    <div class="delay-input-wrapper">
+                                        <label for="alwaysDelayMin" class="delay-sublabel">Min (seconds)</label>
+                                        <input type="number" id="alwaysDelayMin" min="10" max="120" step="1" value="30">
+                                    </div>
+                                    <div class="delay-input-wrapper">
+                                        <label for="alwaysDelayMax" class="delay-sublabel">Max (seconds)</label>
+                                        <input type="number" id="alwaysDelayMax" min="10" max="120" step="1" value="60">
+                                    </div>
+                                </div>
+                                <small>Time to wait for supervisor response before auto-sending (30-60s default)</small>
+                            </div>
+
+                            <div class="form-field supervisor-delay-group" id="sleepThresholdGroup">
+                                <label for="sleepThresholdInput">Inactivity Threshold</label>
+                                <div class="delay-input-wrapper">
+                                    <input type="number" id="sleepThresholdInput" min="0.1" max="60" step="0.1" value="1">
+                                    <span class="input-suffix">seconds</span>
+                                </div>
+                                <small>Time of inactivity before considering the bot "asleep" (wake-up mode only)</small>
+                            </div>
+                        </div>
+
+                        <div class="inline-actions">
+                            <button type="button" id="supervisorSaveBtn" class="supervisor-save-btn">Save Configuration</button>
+                            <small id="supervisorStatus" aria-live="polite"></small>
+                        </div>
                     </div>
                 </div>
                 <div class="panel-card">

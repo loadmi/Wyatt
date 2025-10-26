@@ -93,9 +93,20 @@ class BotController {
         this.openrouterApiKeySave = document.getElementById('openrouterApiKeySave');
         this.openrouterApiKeyClear = document.getElementById('openrouterApiKeyClear');
         this.openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
-        this.escalationContactInput = document.getElementById('escalationContactInput');
-        this.escalationSaveBtn = document.getElementById('escalationSaveBtn');
-        this.escalationStatus = document.getElementById('escalationStatus');
+        // Supervisor configuration elements
+        this.supervisorModeRadios = document.querySelectorAll('input[name="supervisorMode"]');
+        this.supervisorContactInput = document.getElementById('supervisorContactInput');
+        this.wakeUpDelayMin = document.getElementById('wakeUpDelayMin');
+        this.wakeUpDelayMax = document.getElementById('wakeUpDelayMax');
+        this.alwaysDelayMin = document.getElementById('alwaysDelayMin');
+        this.alwaysDelayMax = document.getElementById('alwaysDelayMax');
+        this.sleepThresholdInput = document.getElementById('sleepThresholdInput');
+        this.wakeUpDelayGroup = document.getElementById('wakeUpDelayGroup');
+        this.alwaysDelayGroup = document.getElementById('alwaysDelayGroup');
+        this.sleepThresholdGroup = document.getElementById('sleepThresholdGroup');
+        this.supervisorSaveBtn = document.getElementById('supervisorSaveBtn');
+        this.supervisorStatus = document.getElementById('supervisorStatus');
+        this._supervisorStatusTimer = null;
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -137,8 +148,14 @@ class BotController {
                 this.saveOpenrouterKey();
             });
         }
-        if (this.escalationSaveBtn) {
-            this.escalationSaveBtn.addEventListener('click', () => this.saveEscalationContact());
+        // Supervisor configuration event listeners
+        if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
+            this.supervisorModeRadios.forEach(radio => {
+                radio.addEventListener('change', () => this.updateSupervisorUIState());
+            });
+        }
+        if (this.supervisorSaveBtn) {
+            this.supervisorSaveBtn.addEventListener('click', () => this.saveSupervisorConfig());
         }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
@@ -303,8 +320,8 @@ class BotController {
         // Load LLM configuration
         this.loadLLMConfig();
 
-        // Load wake-up override configuration
-        this.loadEscalationConfig();
+        // Load supervisor configuration
+        this.loadSupervisorConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -516,73 +533,273 @@ class BotController {
         }
     }
 
-    async loadEscalationConfig() {
-        if (!this.escalationContactInput) return;
-        if (this._escalationStatusTimer) {
-            clearTimeout(this._escalationStatusTimer);
-            this._escalationStatusTimer = null;
+    async loadSupervisorConfig() {
+        if (this._supervisorStatusTimer) {
+            clearTimeout(this._supervisorStatusTimer);
+            this._supervisorStatusTimer = null;
         }
         try {
-            const response = await fetch('/api/config/escalation');
+            const response = await fetch('/api/config/supervisor');
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
             }
             const data = await response.json();
-            const contact = typeof data.contact === 'string' ? data.contact : '';
-            this.escalationContactInput.value = contact;
-            if (this.escalationStatus) {
-                this.escalationStatus.textContent = '';
+            
+            // Set mode
+            const mode = data.mode || 'wake-up';
+            if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
+                this.supervisorModeRadios.forEach(radio => {
+                    radio.checked = radio.value === mode;
+                });
             }
+            
+            // Set contact
+            if (this.supervisorContactInput) {
+                this.supervisorContactInput.value = data.contact || '';
+            }
+            
+            // Set wake-up delays (convert ms to seconds)
+            if (this.wakeUpDelayMin && data.wakeUpDelayMs && data.wakeUpDelayMs.min) {
+                this.wakeUpDelayMin.value = Math.round(data.wakeUpDelayMs.min / 1000);
+            }
+            if (this.wakeUpDelayMax && data.wakeUpDelayMs && data.wakeUpDelayMs.max) {
+                this.wakeUpDelayMax.value = Math.round(data.wakeUpDelayMs.max / 1000);
+            }
+            
+            // Set always delays (convert ms to seconds)
+            if (this.alwaysDelayMin && data.alwaysFallbackDelayMs && data.alwaysFallbackDelayMs.min) {
+                this.alwaysDelayMin.value = Math.round(data.alwaysFallbackDelayMs.min / 1000);
+            }
+            if (this.alwaysDelayMax && data.alwaysFallbackDelayMs && data.alwaysFallbackDelayMs.max) {
+                this.alwaysDelayMax.value = Math.round(data.alwaysFallbackDelayMs.max / 1000);
+            }
+            
+            // Set sleep threshold (convert ms to seconds)
+            if (this.sleepThresholdInput && data.sleepThresholdMs) {
+                this.sleepThresholdInput.value = (data.sleepThresholdMs / 1000).toFixed(1);
+            }
+            
+            // Update UI state based on mode
+            this.updateSupervisorUIState();
+            
+            if (this.supervisorStatus) {
+                this.supervisorStatus.textContent = '';
+                delete this.supervisorStatus.dataset.variant;
+            }
+            
+            this.log('Supervisor configuration loaded');
         } catch (error) {
-            if (this.escalationStatus) {
-                this.escalationStatus.textContent = 'Failed to load';
+            if (this.supervisorStatus) {
+                this.supervisorStatus.textContent = 'Failed to load configuration';
+                this.supervisorStatus.dataset.variant = 'error';
             }
-            this.log('❌ Error loading wake-up override config: ' + error.message);
-            this._escalationStatusTimer = setTimeout(() => {
-                if (this.escalationStatus) this.escalationStatus.textContent = '';
-                this._escalationStatusTimer = null;
+            this.log('❌ Error loading supervisor config: ' + error.message);
+            this._supervisorStatusTimer = setTimeout(() => {
+                if (this.supervisorStatus) {
+                    this.supervisorStatus.textContent = '';
+                    delete this.supervisorStatus.dataset.variant;
+                }
+                this._supervisorStatusTimer = null;
             }, 4000);
         }
     }
 
-    async saveEscalationContact() {
-        if (!this.escalationContactInput) return;
-        const contact = this.escalationContactInput.value.trim();
-        if (this.escalationStatus) {
-            this.escalationStatus.textContent = 'Saving...';
+    updateSupervisorUIState() {
+        if (!this.supervisorModeRadios || this.supervisorModeRadios.length === 0) return;
+        
+        // Get selected mode
+        let selectedMode = 'wake-up';
+        this.supervisorModeRadios.forEach(radio => {
+            if (radio.checked) {
+                selectedMode = radio.value;
+            }
+        });
+        
+        // Update contact input state
+        if (this.supervisorContactInput) {
+            const isDisabled = selectedMode === 'disabled';
+            this.supervisorContactInput.disabled = isDisabled;
+            if (isDisabled) {
+                this.supervisorContactInput.style.opacity = '0.5';
+            } else {
+                this.supervisorContactInput.style.opacity = '1';
+            }
         }
-        if (this._escalationStatusTimer) {
-            clearTimeout(this._escalationStatusTimer);
-            this._escalationStatusTimer = null;
+        
+        // Show/hide delay groups based on mode
+        if (this.wakeUpDelayGroup) {
+            if (selectedMode === 'wake-up') {
+                this.wakeUpDelayGroup.style.display = '';
+                this.wakeUpDelayGroup.classList.remove('disabled');
+            } else {
+                this.wakeUpDelayGroup.style.display = 'none';
+            }
         }
+        
+        if (this.alwaysDelayGroup) {
+            if (selectedMode === 'always') {
+                this.alwaysDelayGroup.style.display = '';
+                this.alwaysDelayGroup.classList.remove('disabled');
+            } else {
+                this.alwaysDelayGroup.style.display = 'none';
+            }
+        }
+        
+        if (this.sleepThresholdGroup) {
+            if (selectedMode === 'wake-up') {
+                this.sleepThresholdGroup.style.display = '';
+                this.sleepThresholdGroup.classList.remove('disabled');
+            } else {
+                this.sleepThresholdGroup.style.display = 'none';
+            }
+        }
+        
+        // Disable all delay inputs when mode is disabled
+        const allDelayInputs = [
+            this.wakeUpDelayMin, this.wakeUpDelayMax,
+            this.alwaysDelayMin, this.alwaysDelayMax,
+            this.sleepThresholdInput
+        ];
+        allDelayInputs.forEach(input => {
+            if (input) {
+                input.disabled = selectedMode === 'disabled';
+            }
+        });
+    }
+
+    async saveSupervisorConfig() {
+        if (!this.supervisorModeRadios || this.supervisorModeRadios.length === 0) return;
+        
+        // Get selected mode
+        let mode = 'wake-up';
+        this.supervisorModeRadios.forEach(radio => {
+            if (radio.checked) {
+                mode = radio.value;
+            }
+        });
+        
+        // Get contact
+        const contact = this.supervisorContactInput ? this.supervisorContactInput.value.trim() : '';
+        
+        // Validate contact for non-disabled modes
+        if (mode !== 'disabled' && !contact) {
+            if (this.supervisorStatus) {
+                this.supervisorStatus.textContent = 'Contact is required for non-disabled modes';
+                this.supervisorStatus.dataset.variant = 'error';
+            }
+            this._supervisorStatusTimer = setTimeout(() => {
+                if (this.supervisorStatus) {
+                    this.supervisorStatus.textContent = '';
+                    delete this.supervisorStatus.dataset.variant;
+                }
+                this._supervisorStatusTimer = null;
+            }, 4000);
+            return;
+        }
+        
+        // Build payload
+        const payload = { mode, contact };
+        
+        // Add wake-up delays (convert seconds to ms)
+        if (this.wakeUpDelayMin && this.wakeUpDelayMax) {
+            const min = parseFloat(this.wakeUpDelayMin.value) * 1000;
+            const max = parseFloat(this.wakeUpDelayMax.value) * 1000;
+            if (min > max) {
+                if (this.supervisorStatus) {
+                    this.supervisorStatus.textContent = 'Wake-up min delay must be ≤ max delay';
+                    this.supervisorStatus.dataset.variant = 'error';
+                }
+                this._supervisorStatusTimer = setTimeout(() => {
+                    if (this.supervisorStatus) {
+                        this.supervisorStatus.textContent = '';
+                        delete this.supervisorStatus.dataset.variant;
+                    }
+                    this._supervisorStatusTimer = null;
+                }, 4000);
+                return;
+            }
+            payload.wakeUpDelayMs = { min, max };
+        }
+        
+        // Add always delays (convert seconds to ms)
+        if (this.alwaysDelayMin && this.alwaysDelayMax) {
+            const min = parseFloat(this.alwaysDelayMin.value) * 1000;
+            const max = parseFloat(this.alwaysDelayMax.value) * 1000;
+            if (min > max) {
+                if (this.supervisorStatus) {
+                    this.supervisorStatus.textContent = 'Always min delay must be ≤ max delay';
+                    this.supervisorStatus.dataset.variant = 'error';
+                }
+                this._supervisorStatusTimer = setTimeout(() => {
+                    if (this.supervisorStatus) {
+                        this.supervisorStatus.textContent = '';
+                        delete this.supervisorStatus.dataset.variant;
+                    }
+                    this._supervisorStatusTimer = null;
+                }, 4000);
+                return;
+            }
+            payload.alwaysFallbackDelayMs = { min, max };
+        }
+        
+        // Add sleep threshold (convert seconds to ms)
+        if (this.sleepThresholdInput) {
+            payload.sleepThresholdMs = parseFloat(this.sleepThresholdInput.value) * 1000;
+        }
+        
+        // Show saving status
+        if (this.supervisorStatus) {
+            this.supervisorStatus.textContent = 'Saving...';
+            delete this.supervisorStatus.dataset.variant;
+        }
+        if (this._supervisorStatusTimer) {
+            clearTimeout(this._supervisorStatusTimer);
+            this._supervisorStatusTimer = null;
+        }
+        
+        // Disable save button
+        if (this.supervisorSaveBtn) {
+            this.supervisorSaveBtn.disabled = true;
+        }
+        
         try {
-            const response = await fetch('/api/config/escalation', {
+            const response = await fetch('/api/config/supervisor', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contact }),
+                body: JSON.stringify(payload),
             });
             const data = await response.json();
             if (!response.ok || (data && data.success === false)) {
                 throw new Error((data && data.message) || ('HTTP ' + response.status));
             }
-            const saved = typeof data.contact === 'string' ? data.contact : contact;
-            if (this.escalationContactInput) {
-                this.escalationContactInput.value = saved;
+            
+            if (this.supervisorStatus) {
+                this.supervisorStatus.textContent = 'Configuration saved successfully';
+                this.supervisorStatus.dataset.variant = 'success';
             }
-            if (this.escalationStatus) {
-                this.escalationStatus.textContent = saved ? 'Saved' : 'Disabled';
-            }
-            this.log(saved ? `Wake-up override contact set to ${saved}` : 'Wake-up override disabled');
+            
+            const modeLabel = mode === 'wake-up' ? 'Wake-Up' : mode === 'always' ? 'Always' : 'Disabled';
+            this.log(`✅ Supervisor configuration saved (Mode: ${modeLabel})`);
+            
+            // Reload to ensure UI is in sync
+            await this.loadSupervisorConfig();
         } catch (error) {
-            if (this.escalationStatus) {
-                this.escalationStatus.textContent = 'Failed to save';
+            if (this.supervisorStatus) {
+                this.supervisorStatus.textContent = 'Failed to save: ' + error.message;
+                this.supervisorStatus.dataset.variant = 'error';
             }
-            this.log('❌ Error saving wake-up override contact: ' + error.message);
+            this.log('❌ Error saving supervisor config: ' + error.message);
         } finally {
-            this._escalationStatusTimer = setTimeout(() => {
-                if (this.escalationStatus) this.escalationStatus.textContent = '';
-                this._escalationStatusTimer = null;
-            }, 4000);
+            if (this.supervisorSaveBtn) {
+                this.supervisorSaveBtn.disabled = false;
+            }
+            this._supervisorStatusTimer = setTimeout(() => {
+                if (this.supervisorStatus) {
+                    this.supervisorStatus.textContent = '';
+                    delete this.supervisorStatus.dataset.variant;
+                }
+                this._supervisorStatusTimer = null;
+            }, 3000);
         }
     }
 

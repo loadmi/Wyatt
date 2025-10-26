@@ -105,7 +105,7 @@ function shouldWakeUp(senderId: string, chatId: string | undefined): boolean {
   }
 
   const timeSinceLastInteraction = Date.now() - record.lastInteraction;
-  return timeSinceLastInteraction > appConfig().sleepThresholdMs;
+  return timeSinceLastInteraction > appConfig().supervisor.sleepThresholdMs;
 }
 
 // Helper function to save interaction tracker to persistence
@@ -136,15 +136,60 @@ function updateLastInteraction(senderId: string, chatId: string | undefined): vo
 // Helper function to get wake up delay duration
 function getWakeUpDelay(): number {
   const config = appConfig();
-  return randomInRange(config.wakeUpDelayMs.min, config.wakeUpDelayMs.max);
+  return randomInRange(config.supervisor.wakeUpDelayMs.min, config.supervisor.wakeUpDelayMs.max);
 }
 
 function getConfiguredHumanTarget(): string | null {
   const cfg = appConfig() as any;
-  const raw = cfg?.humanEscalationChatId;
+  // Prefer new supervisor.contact field, fallback to legacy humanEscalationChatId
+  const raw = cfg?.supervisor?.contact || cfg?.humanEscalationChatId;
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+// Check if supervisor should be contacted based on mode and wake-up status
+function shouldContactSupervisor(senderId: string, chatId?: string): boolean {
+  const cfg = appConfig() as any;
+  const mode = cfg?.supervisor?.mode || 'wake-up';
+  
+  // If disabled, never contact supervisor
+  if (mode === 'disabled') {
+    return false;
+  }
+  
+  // If always mode, always contact supervisor
+  if (mode === 'always') {
+    return true;
+  }
+  
+  // If wake-up mode, check if bot needs to wake up
+  if (mode === 'wake-up') {
+    return shouldWakeUp(senderId, chatId);
+  }
+  
+  return false;
+}
+
+// Get appropriate fallback delay based on supervisor mode
+function getSupervisorFallbackDelay(): number {
+  const cfg = appConfig() as any;
+  const mode = cfg?.supervisor?.mode || 'wake-up';
+  
+  if (mode === 'always') {
+    const delays = cfg?.supervisor?.alwaysFallbackDelayMs || {
+      min: 30_000,
+      max: 60_000
+    };
+    return randomInRange(delays.min, delays.max);
+  }
+  
+  // Default to wake-up delays for 'wake-up' mode or fallback
+  const delays = cfg?.supervisor?.wakeUpDelayMs || {
+    min: 5_000,
+    max: 10_000
+  };
+  return randomInRange(delays.min, delays.max);
 }
 
 async function resolveHumanPeer(client: any): Promise<{ input: any; key: string } | null> {
@@ -684,7 +729,7 @@ async function attemptHumanOverride(params: {
   personaRecord: any;
   llmContext: LLMContextEntry[];
   messageText: string;
-  wakeUpDelay: number;
+  isAlwaysMode?: boolean;
   startedAt: number;
 }): Promise<boolean> {
   const {
@@ -697,26 +742,30 @@ async function attemptHumanOverride(params: {
     personaRecord,
     llmContext,
     messageText,
-    wakeUpDelay,
+    isAlwaysMode,
     startedAt,
   } = params;
 
-  console.log(`🤖 Bot waking up after inactivity (${Math.max(1, Math.round(wakeUpDelay / 1000))}s delay)...`);
+  // Get appropriate delay based on mode
+  const fallbackDelay = getSupervisorFallbackDelay();
+  const modeLabel = isAlwaysMode ? 'always' : 'wake-up';
+  
+  console.log(`🤖 Supervisor contact requested (${modeLabel} mode, ${Math.max(1, Math.round(fallbackDelay / 1000))}s timeout)...`);
   
   // Get sender's display name
   const senderName = await getSenderDisplayName(message);
 
   const target = getConfiguredHumanTarget();
   if (!target) {
-    await sleep(wakeUpDelay);
-    console.log("✅ Bot awake and ready to respond");
+    await sleep(fallbackDelay);
+    console.log(`✅ No supervisor configured, proceeding with automated response (${modeLabel} mode)`);
     return false;
   }
 
   const humanPeer = await resolveHumanPeer(client);
   if (!humanPeer) {
-    await sleep(wakeUpDelay);
-    console.log("✅ Bot awake and ready to respond");
+    await sleep(fallbackDelay);
+    console.log(`✅ Unable to resolve supervisor, proceeding with automated response (${modeLabel} mode)`);
     return false;
   }
 
@@ -747,8 +796,8 @@ async function attemptHumanOverride(params: {
     return text || "(no text)";
   })();
 
-  const prettyDelay = Math.max(1, Math.round(wakeUpDelay / 1000));
-  const overrideId = `wake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const prettyDelay = Math.max(1, Math.round(fallbackDelay / 1000));
+  const overrideId = `supervisor_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   
   // Extract persona information
   const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
@@ -771,7 +820,7 @@ async function attemptHumanOverride(params: {
   
   // Build notification with context sections
   const notificationParts = [
-    `🔔 **WAKE-UP REQUEST**`,
+    `🔔 **SUPERVISOR REQUEST** (${modeLabel.toUpperCase()} MODE)`,
     ``,
     `🎭 Active Persona: **${personaLabel}**`,
     `👤 Contact: ${contactInfo}${chatId ? ` · Chat ${chatId}` : ""}`,
@@ -812,9 +861,9 @@ async function attemptHumanOverride(params: {
   try {
     sent = await client.sendMessage(humanPeer.input, { message: notification });
   } catch (error) {
-    console.warn("Failed to notify wake-up supervisor:", (error as any)?.message || error);
-    await sleep(wakeUpDelay);
-    console.log("✅ Bot awake and ready to respond");
+    console.warn(`Failed to notify supervisor (${modeLabel} mode):`, (error as any)?.message || error);
+    await sleep(fallbackDelay);
+    console.log(`✅ Proceeding with automated response (${modeLabel} mode)`);
     return false;
   }
 
@@ -833,7 +882,7 @@ async function attemptHumanOverride(params: {
       requestMessageId,
       suggestions,
       createdAt: Date.now(),
-      expiresAt: Date.now() + wakeUpDelay,
+      expiresAt: Date.now() + fallbackDelay,
       resolved: false,
       resolve,
       original: {
@@ -847,7 +896,7 @@ async function attemptHumanOverride(params: {
     });
   });
 
-  const timerPromise = sleep(wakeUpDelay).then<HumanOverrideDecision>(() => ({
+  const timerPromise = sleep(fallbackDelay).then<HumanOverrideDecision>(() => ({
     type: "ignore",
     reason: "timeout",
   }));
@@ -897,7 +946,7 @@ async function attemptHumanOverride(params: {
         message: "👍 Got it. Continuing with the automated response.",
       });
     } catch { }
-    console.log("👋 Manual wake-up override skipped by supervisor; continuing automated reply.");
+    console.log(`👋 Supervisor override skipped (${modeLabel} mode); continuing automated reply.`);
     return false;
   }
 
@@ -906,8 +955,7 @@ async function attemptHumanOverride(params: {
       message: "⏰ No selection received. Resuming the automated reply.",
     });
   } catch { }
-  console.log("⌛ Manual wake-up override timed out; falling back to automated response.");
-  console.log("✅ Bot awake and ready to respond");
+  console.log(`⌛ Supervisor override timed out (${modeLabel} mode); falling back to automated response.`);
   return false;
 }
 
@@ -1074,12 +1122,16 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   recordInbound(senderIdString);
 
-  // Wake up routine: check if bot has been inactive and needs to wake up
+  // Supervisor contact logic: check mode and determine if supervisor should be contacted
   const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
   const peerKey = toIdStringSafe(message?.peerId);
   const conversationKey = chatId ?? peerKey ?? senderIdString;
-  const needsWakeUp = shouldWakeUp(senderIdString, chatId);
+  
+  // Check if supervisor should be contacted based on mode
+  const cfg = appConfig() as any;
+  const supervisorMode = cfg?.supervisor?.mode || 'wake-up';
+  const needsSupervisorContact = shouldContactSupervisor(senderIdString, chatId);
 
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
@@ -1117,8 +1169,9 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   const composeStartedAt = Date.now();
 
-  if (needsWakeUp) {
-    const wakeUpDelay = getWakeUpDelay();
+  // Contact supervisor if needed (based on mode: disabled/always/wake-up)
+  if (supervisorMode !== 'disabled' && needsSupervisorContact) {
+    const isAlwaysMode = supervisorMode === 'always';
     const overrideHandled = await attemptHumanOverride({
       client,
       message,
@@ -1129,7 +1182,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       personaRecord,
       llmContext,
       messageText: (messageText ?? "").toString(),
-      wakeUpDelay,
+      isAlwaysMode,
       startedAt: composeStartedAt,
     });
     if (overrideHandled) {
