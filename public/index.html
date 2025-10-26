@@ -152,8 +152,84 @@
         .dashboard-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: flex-start; /* Align items to the start */
             gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            flex-grow: 1;
+            justify-content: space-between; /* Distribute items to push buttons right */
+        }
+
+        /* Adjustments for status and controls within the header */
+        .header-controls .status {
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            flex-grow: 1; /* Allow status to fill available space */
+            flex-shrink: 1; /* Allow status to shrink if needed */
+            text-align: left;
+            min-width: 120px; /* Ensure status has a minimum width */
+        }
+
+        .header-controls .controls {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0; /* Prevent controls from shrinking */
+            flex-grow: 0; /* Prevent controls from growing */
+        }
+
+        .header-controls .controls button {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+
+        /* Order for desktop: Theme toggle first, then status, then controls */
+        .header-controls .theme-toggle {
+            order: -1; /* Place theme toggle first */
+            flex-shrink: 0;
+        }
+
+        /* Mobile adjustments for header controls */
+        @media (max-width: 720px) {
+            .dashboard-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .header-controls {
+                justify-content: flex-start; /* Align items to the left on mobile */
+                width: 100%;
+                margin-top: 12px;
+            }
+
+            /* Order for mobile: Theme toggle topmost, then status, then controls */
+            .header-controls .theme-toggle {
+                order: 0;
+                width: 100%;
+                justify-content: flex-start; /* Align toggle to the left on mobile */
+            }
+
+            .header-controls .status {
+                order: 1;
+                width: 100%;
+                text-align: center;
+            }
+
+            .header-controls .controls {
+                order: 2;
+                flex-grow: 1; /* Allow buttons to grow and fill space on mobile */
+                justify-content: center;
+                width: 100%;
+            }
+
+            .header-controls .controls button {
+                flex-grow: 1; /* Make individual buttons fill space on mobile */
+            }
         }
 
         .dashboard-header h1 {
@@ -1675,25 +1751,32 @@
                 <h1>🤖 Scam Bait Bot Control Panel</h1>
                 <p class="subtitle">Command center for baiting operations — compact, layered, and readable.</p>
             </div>
-            <div class="theme-toggle" role="group" aria-label="Theme toggle">
-                <span id="themeLabel" class="theme-label" aria-live="polite">Dark</span>
-                <label class="switch" aria-label="Toggle theme">
-                    <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
-                    <span class="slider">
-                        <span class="icon moon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                                <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
-                            </svg>
+            <div class="header-controls">
+                <div id="status" class="status stopped">Status: Checking...</div>
+                <div class="controls">
+                    <button id="startBtn" class="start-btn">Start Bot</button>
+                    <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
+                </div>
+                <div class="theme-toggle" role="group" aria-label="Theme toggle">
+                    <span id="themeLabel" class="theme-label" aria-live="polite">Dark</span>
+                    <label class="switch" aria-label="Toggle theme">
+                        <input type="checkbox" id="themeToggle" checked aria-label="Dark mode toggle">
+                        <span class="slider">
+                            <span class="icon moon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 0010 9.79z"></path>
+                                </svg>
+                            </span>
+                            <span class="icon sun" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path
+                                        d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z">
+                                    </path>
+                                </svg>
+                            </span>
                         </span>
-                        <span class="icon sun" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                                <path
-                                    d="M12 4.5a1 1 0 011 1V7a1 1 0 11-2 0V5.5a1 1 0 011-1zm0 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm6.5-3.5a1 1 0 011-1H21a1 1 0 110 2h-1.5a1 1 0 01-1-1zM12 17a1 1 0 011 1v1.5a1 1 0 11-2 0V18a1 1 0 011-1zM3 12a1 1 0 011-1H5.5a1 1 0 110 2H4a1 1 0 01-1-1zm2.96-6.04a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L5.96 7.37a1 1 0 010-1.41zm11.02 0a1 1 0 011.41 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06zM6.02 16.63a1 1 0 011.41 0l1.06 1.06a1 1 0 11-1.41 1.41L6.02 18.04a1 1 0 010-1.41zm11.96 0a1 1 0 010 1.41l-1.06 1.06a1 1 0 11-1.41-1.41l1.06-1.06a1 1 0 011.41 0z">
-                                </path>
-                            </svg>
-                        </span>
-                    </span>
-                </label>
+                    </label>
+                </div>
             </div>
         </header>
 
@@ -1703,13 +1786,8 @@
         </div>
 
         <nav class="tab-bar" role="tablist" aria-label="Dashboard sections">
-            <button id="tab-overview" class="tab-button" type="button" role="tab" aria-selected="true"
-                aria-controls="panel-overview" data-tab="overview">
-                <span class="tab-icon" aria-hidden="true">📊</span>
-                <span class="tab-text">Overview</span>
-            </button>
-            <button id="tab-configuration" class="tab-button" type="button" role="tab" aria-selected="false"
-                aria-controls="panel-configuration" tabindex="-1" data-tab="configuration">
+            <button id="tab-configuration" class="tab-button" type="button" role="tab" aria-selected="true"
+                aria-controls="panel-configuration" data-tab="configuration">
                 <span class="tab-icon" aria-hidden="true">⚙️</span>
                 <span class="tab-text">Configuration</span>
             </button>
@@ -1731,44 +1809,6 @@
         </nav>
 
         <main class="tab-panels">
-            <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
-                <div class="panel-stack">
-                    <div class="panel-card">
-                        <h2 class="panel-title">Run State</h2>
-                        <div id="status" class="status stopped">Status: Checking...</div>
-                        <div class="controls">
-                            <button id="startBtn" class="start-btn">Start Bot</button>
-                            <button id="stopBtn" class="stop-btn" disabled>Stop Bot</button>
-                        </div>
-                    </div>
-                    <div class="panel-card">
-                        <h2 class="panel-title">Snapshot</h2>
-                        <div class="summary-grid">
-                            <div class="metric-card" role="listitem">
-                                <span class="metric-label">Uptime</span>
-                                <span class="metric-value" id="summaryUptime">--</span>
-                            </div>
-                            <div class="metric-card" role="listitem">
-                                <span class="metric-label">Unique Contacts</span>
-                                <span class="metric-value" id="summaryContacts">--</span>
-                            </div>
-                            <div class="metric-card" role="listitem">
-                                <span class="metric-label">Inbound Messages</span>
-                                <span class="metric-value" id="summaryInbound">--</span>
-                            </div>
-                            <div class="metric-card" role="listitem">
-                                <span class="metric-label">Outbound Messages</span>
-                                <span class="metric-value" id="summaryOutbound">--</span>
-                            </div>
-                            <div class="metric-card" role="listitem">
-                                <span class="metric-label">Avg Response Delay</span>
-                                <span class="metric-value" id="summaryResponse">--</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             <section id="panel-configuration" class="tab-panel" role="tabpanel" aria-labelledby="tab-configuration"
                 hidden>
                 <div class="panel-card">

@@ -124,13 +124,6 @@ class BotController {
             outbound: document.getElementById('metricOutbound'),
             response: document.getElementById('metricResponse'),
         };
-        this.summaryCards = {
-            uptime: document.getElementById('summaryUptime'),
-            contacts: document.getElementById('summaryContacts'),
-            inbound: document.getElementById('summaryInbound'),
-            outbound: document.getElementById('summaryOutbound'),
-            response: document.getElementById('summaryResponse'),
-        };
         this.leaderboardBody = document.getElementById('leaderboardBody');
         this.throughputCanvas = document.getElementById('throughputChart');
         this.providerCanvas = document.getElementById('providerChart');
@@ -216,7 +209,7 @@ class BotController {
         this.chatSearchTerm = '';
         this._chatStatusTimer = null;
         this.chatRenderCache = new Map();
-        this.currentTab = 'overview';
+        this.currentTab = 'configuration';
         this.chatRefreshRates = {
             turtle: { interval: 15000, listEvery: 2 },
             normal: { interval: 5000, listEvery: 3 },
@@ -2510,7 +2503,6 @@ class BotController {
             this.metricsTimestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
         }
 
-        this.updateSummaryCards(snapshot);
 
         if (this.metricCards.uptime) {
             this.metricCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
@@ -2534,26 +2526,6 @@ class BotController {
         this.updateLeaderboard(snapshot.contacts || []);
     }
 
-    updateSummaryCards(snapshot) {
-        if (!this.summaryCards) return;
-        const totals = snapshot?.totals || {};
-        if (this.summaryCards.uptime) {
-            this.summaryCards.uptime.textContent = formatDuration(snapshot.uptimeMs);
-        }
-        if (this.summaryCards.contacts) {
-            this.summaryCards.contacts.textContent = this.numberFormatter.format(totals.uniqueContacts || 0);
-        }
-        if (this.summaryCards.inbound) {
-            this.summaryCards.inbound.textContent = this.numberFormatter.format(totals.inbound || 0);
-        }
-        if (this.summaryCards.outbound) {
-            this.summaryCards.outbound.textContent = this.numberFormatter.format(totals.outbound || 0);
-        }
-        if (this.summaryCards.response) {
-            const avg = snapshot?.responseTime?.averageMs;
-            this.summaryCards.response.textContent = Number.isFinite(avg) ? `${Math.round(avg)} ms` : '—';
-        }
-    }
 
     updateTimelineChart(buckets) {
         if (!this.timelineChart) return;
@@ -2751,8 +2723,9 @@ class TabController {
         const saved = this.getSavedTab();
         if (saved && this.tabs.some(tab => tab.slug === saved)) {
             this.activate(saved, { focusButton: false, skipStore: true });
-        } else if (this.tabs.length > 0) {
-            this.activate(this.tabs[0].slug, { focusButton: false, skipStore: true });
+        } else {
+            // Default to 'configuration' if no saved tab or saved tab is 'overview'
+            this.activate('configuration', { focusButton: false, skipStore: true });
         }
     }
 
