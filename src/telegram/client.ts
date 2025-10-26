@@ -11,6 +11,7 @@ import { botStarted, botStopped } from "../metrics";
 import { generateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
+import { getChatPersonaSummary } from "./chatPersonality";
 
 let client: TelegramClient;
 let isRunning = false;
@@ -42,6 +43,10 @@ export type DashboardChatSummary = {
   lastMessage?: string;
   lastTimestamp?: number;
   unreadCount?: number;
+  personaId?: string;
+  personaLabel?: string;
+  usesDefaultPersona?: boolean;
+  personaUpdatedAt?: number;
 };
 
 export type DashboardChatMessage = {
@@ -53,7 +58,16 @@ export type DashboardChatMessage = {
 };
 
 export type DashboardChatHistory = {
-  chat: { id: string; title: string; type: ChatCacheEntry["type"] };
+  chat: {
+    id: string;
+    title: string;
+    type: ChatCacheEntry["type"];
+    personaId?: string;
+    personaLabel?: string;
+    usesDefaultPersona?: boolean;
+    personaUpdatedAt?: number;
+    lastTimestamp?: number;
+  };
   messages: DashboardChatMessage[];
 };
 
@@ -355,6 +369,22 @@ function toDialogKey(raw: any): string | null {
   return null;
 }
 
+// Prefer stable, Telegram-native numeric IDs for chats/groups/channels
+// so that server APIs and runtime handlers use the same keys.
+function toStableChatKey(entity: any, dialog?: any): string | null {
+  try {
+    // Prefer explicit fields first
+    if (entity?.userId !== undefined && entity?.userId !== null) return toDialogKey(entity.userId);
+    if (entity?.channelId !== undefined && entity?.channelId !== null) return toDialogKey(entity.channelId);
+    if (entity?.chatId !== undefined && entity?.chatId !== null) return toDialogKey(entity.chatId);
+    // Fall back to entity.id, which for Users/Chats/Channels is typically numeric
+    if (entity?.id !== undefined && entity?.id !== null) return toDialogKey(entity.id);
+    // As a last resort, consider dialog.id if present
+    if (dialog?.id !== undefined && dialog?.id !== null) return toDialogKey(dialog.id);
+  } catch { }
+  return null;
+}
+
 function resolveDialogType(dialog: any, entity: any): ChatCacheEntry["type"] {
   if (dialog?.isUser) return "private";
   if (dialog?.isGroup) return "group";
@@ -502,7 +532,8 @@ export async function listChats(): Promise<DashboardChatSummary[]> {
     const entity: any = (dialog as any)?.entity;
     if (!entity) continue;
 
-    const key = toDialogKey((dialog as any).id ?? entity?.id ?? entity?.userId ?? entity?.channelId ?? entity?.chatId);
+    // Use a stable key that matches runtime handler conversation keys
+    const key = toStableChatKey(entity, dialog);
     if (!key) continue;
 
     let inputPeer: any;
@@ -538,6 +569,18 @@ export async function listChats(): Promise<DashboardChatSummary[]> {
     }
     if (unreadTotal > 0) {
       summary.unreadCount = unreadTotal;
+    }
+    try {
+      const persona = await getChatPersonaSummary(key);
+      summary.personaId = persona.personaId;
+      summary.personaLabel = persona.personaLabel;
+      summary.usesDefaultPersona = persona.usesDefaultPersona;
+      summary.personaUpdatedAt = persona.updatedAt;
+    } catch (error) {
+      console.warn(
+        `Failed to resolve chat persona for ${title || key}:`,
+        (error as any)?.message || error,
+      );
     }
     summaries.push(summary);
   }
@@ -604,8 +647,33 @@ export async function getChatHistory(chatId: string, limit = 150): Promise<Dashb
     return timeA - timeB;
   });
 
+  let personaId: string | undefined;
+  let personaLabel: string | undefined;
+  let usesDefault: boolean | undefined;
+  let personaUpdatedAt: number | undefined;
+  try {
+    const persona = await getChatPersonaSummary(chatId);
+    personaId = persona.personaId;
+    personaLabel = persona.personaLabel;
+    usesDefault = persona.usesDefaultPersona;
+    personaUpdatedAt = persona.updatedAt;
+  } catch (error) {
+    console.warn(`Failed to resolve chat persona for history ${chatId}:`, (error as any)?.message || error);
+  }
+
+  const lastTimestamp = messages.length > 0 ? messages[messages.length - 1].timestamp : undefined;
+
   return {
-    chat: { id: chatId, title: entry.title, type: entry.type },
+    chat: {
+      id: chatId,
+      title: entry.title,
+      type: entry.type,
+      personaId,
+      personaLabel,
+      usesDefaultPersona: usesDefault,
+      personaUpdatedAt,
+      lastTimestamp,
+    },
     messages,
   };
 }

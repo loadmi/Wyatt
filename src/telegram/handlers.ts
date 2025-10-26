@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
+import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -149,6 +150,9 @@ function toIdStringSafe(x: any): string | null {
   try {
     if (x === null || x === undefined) return null;
     if (typeof x === "string" || typeof x === "number" || typeof x === "bigint") return String(x);
+    // Prefer explicit peer identifiers first so groups/channels use numeric IDs
+    if (x?.channelId !== undefined) return toIdStringSafe(x.channelId);
+    if (x?.chatId !== undefined) return toIdStringSafe(x.chatId);
     if (x?.userId !== undefined) return toIdStringSafe(x.userId);
     if (x?.id !== undefined) return toIdStringSafe(x.id);
     if (x?.value !== undefined) return toIdStringSafe(x.value);
@@ -400,6 +404,8 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // Wake up routine: check if bot has been inactive and needs to wake up
   const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
+  const peerKey = toIdStringSafe(message?.peerId);
+  const conversationKey = chatId ?? peerKey ?? senderIdString;
   const needsWakeUp = shouldWakeUp(senderIdString, chatId);
 
   if (needsWakeUp) {
@@ -417,15 +423,29 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   let context: ContextEntry[] = [];
   try {
     if (inputPeer) {
-      context = await fetchFullHistory(client, inputPeer, senderIdString);
+      context = await fetchFullHistory(client, inputPeer, conversationKey);
     }
   } catch (e) {
     console.error("Failed to build context:", e);
   }
 
+  let personaRecord: any = null;
+  let personaPrompt = appConfig().systemPrompt;
+  try {
+    personaRecord = await ensureChatPersonaRecord(conversationKey);
+    if (personaRecord?.systemPrompt?.trim()) {
+      personaPrompt = personaRecord.systemPrompt;
+    }
+  } catch (error) {
+    console.warn(
+      `Falling back to default persona for chat ${conversationKey}:`,
+      (error as any)?.message || error,
+    );
+  }
+
   let llmContext: LLMContextEntry[] = [];
-  // console.log("System Prompt:", appConfig().systemPrompt);
-  llmContext = convertContextToLLM(context, appConfig().systemPrompt);
+  // console.log("System Prompt:", personaPrompt);
+  llmContext = convertContextToLLM(context, personaPrompt);
 
 
  // console.log("Context:", llmContext);
@@ -512,7 +532,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       recordOutbound(senderIdString, Date.now() - composeStartedAt);
       outboundRecorded = true;
     }
-    console.log(`Replied to ${senderIdString}: "${replyText}"`);
+    console.log(`Replied to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
 
     // Update last interaction time after successful response
     updateLastInteraction(senderIdString, chatId);
@@ -535,7 +555,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         recordOutbound(senderIdString, Date.now() - composeStartedAt);
         outboundRecorded = true;
       }
-      console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
+      console.log(`Replied via API to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
 
       // Update last interaction time after successful response
       updateLastInteraction(senderIdString, chatId);
