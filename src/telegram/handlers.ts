@@ -1088,7 +1088,7 @@ async function attemptHumanOverride(params: {
   return false;
 }
 
-async function resolveInputPeerSafe(client: any, message: any): Promise<any | undefined> {
+async function resolveInputPeerSafe(client: any, message: any): Promise<any> {
   try {
     const byMessage = await message.getInputChat?.();
     if (byMessage) return byMessage;
