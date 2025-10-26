@@ -1,9 +1,10 @@
 // src/telegram/handlers.ts
 import { NewMessage, NewMessageEvent } from "telegram/events";
+import { CallbackQueryEvent } from "telegram/events/CallbackQuery";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
-import { getResponse } from "../llm/llm";
+import { generateSampleReplies, getResponse } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 
@@ -49,6 +50,73 @@ function loadInteractionTracker(): Map<string, InteractionRecord> {
  }
 
 const interactionTracker = loadInteractionTracker();
+
+type ManualOption = {
+  id: string;
+  text: string;
+  label: string;
+};
+
+type ManualIntervention = {
+  token: string;
+  conversationKey: string;
+  manualResponderId: string | null;
+  manualPeer: any;
+  originalPeer: any;
+  originalMessageId: number;
+  originalSenderId: string;
+  chatId?: string;
+  isGroup: boolean;
+  options: ManualOption[];
+  createdAt: number;
+  expiresAt: number;
+  responded: boolean;
+  respondedAt?: number;
+  responseText?: string;
+  composeStartedAt: number;
+  personaLabel?: string;
+};
+
+const manualInterventions = new Map<string, ManualIntervention>();
+const manualConversationIndex = new Map<string, string>();
+
+const MANUAL_FALLBACK_OPTIONS = [
+  "Oh goodness, just seeing this now—did you still need me?",
+  "Hey there stranger, sorry I nodded off for a bit. What’s the latest?",
+  "I’m awake! Give granny a hint about what’s going on again?",
+];
+
+function generateManualToken(): string {
+  return `mw_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getManualResponderTarget(): string | null {
+  const raw = (appConfig() as any).manualResponderChatId;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
+
+function truncateForPreview(text: string, max = 600): string {
+  const value = (text || "").trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function cleanupManualIntervention(token: string): ManualIntervention | undefined {
+  const entry = manualInterventions.get(token);
+  if (!entry) return undefined;
+  manualInterventions.delete(token);
+  manualConversationIndex.delete(entry.conversationKey);
+  return entry;
+}
+
+export function resetManualInterventions(): void {
+  manualInterventions.clear();
+  manualConversationIndex.clear();
+}
 
 // Helper function to get cache key for interaction tracking
 function getInteractionKey(senderId: string, chatId?: string): string {
@@ -242,6 +310,190 @@ export function convertContextToLLM(context: ContextEntry[], systemPrompt?: stri
   return mapped;
 }
 
+type ManualInterventionParams = {
+  client: any;
+  conversationKey: string;
+  senderIdString: string;
+  messageText: string;
+  personaLabel?: string;
+  llmContext: LLMContextEntry[];
+  autoReplyText: string;
+  wakeUpDelayMs: number;
+  originalPeer: any;
+  originalMessageId: number;
+  isGroup: boolean;
+  chatId?: string;
+  composeStartedAt: number;
+};
+
+function canonicalize(text: string): string {
+  return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function maybeStartManualIntervention(params: ManualInterventionParams): Promise<ManualIntervention | null> {
+  const manualTarget = getManualResponderTarget();
+  if (!manualTarget) {
+    return null;
+  }
+
+  const client = params.client;
+  let manualPeer: any;
+  try {
+    manualPeer = await client.getInputEntity(manualTarget);
+  } catch (error) {
+    console.warn(
+      `Failed to resolve manual responder target "${manualTarget}":`,
+      (error as any)?.message || error,
+    );
+    return null;
+  }
+
+  const manualResponderId = toIdStringSafe(manualPeer) || manualTarget;
+
+  const existingToken = manualConversationIndex.get(params.conversationKey);
+  if (existingToken) {
+    cleanupManualIntervention(existingToken);
+  }
+
+  const token = generateManualToken();
+  const desiredOptions = 3;
+  const defaultReply = (params.autoReplyText || "").trim();
+  const suggestions = await generateSampleReplies(params.llmContext, desiredOptions).catch(() => []);
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  const pushOption = (text: string) => {
+    const trimmed = (text || "").trim();
+    if (!trimmed) return;
+    const key = canonicalize(trimmed);
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(trimmed);
+  };
+
+  if (defaultReply) {
+    pushOption(defaultReply);
+  }
+
+  for (const suggestion of suggestions) {
+    if (unique.length >= desiredOptions) break;
+    pushOption(suggestion);
+  }
+
+  for (const fallback of MANUAL_FALLBACK_OPTIONS) {
+    if (unique.length >= desiredOptions) break;
+    pushOption(fallback);
+  }
+
+  if (unique.length === 0) {
+    pushOption("Still here! Mind catching me up again?");
+  }
+
+  const selected = unique.slice(0, desiredOptions);
+  const manualOptions: ManualOption[] = selected.map((text, index) => {
+    const isDefault = defaultReply && canonicalize(text) === canonicalize(defaultReply);
+    const label = isDefault ? "Send default" : `Send option ${index + 1}`;
+    return {
+      id: `manual|${token}|${index}`,
+      text,
+      label,
+    };
+  });
+
+  const seconds = Math.max(5, Math.round(params.wakeUpDelayMs / 1000));
+  const preview = truncateForPreview(params.messageText, 800);
+  const personaLine = params.personaLabel ? `Persona: ${params.personaLabel}` : null;
+  const optionSummary = manualOptions
+    .map((opt, index) => `${index + 1}. ${opt.text}`)
+    .join("\n\n");
+
+  const messageLines = [
+    "🛎️ Wake-up override requested",
+    `Contact: ${params.senderIdString}`,
+  ];
+  if (personaLine) {
+    messageLines.push(personaLine);
+  }
+  if (preview) {
+    messageLines.push("");
+    messageLines.push(`Message received:\n${preview}`);
+  }
+  messageLines.push("");
+  messageLines.push("Suggested replies:");
+  messageLines.push(optionSummary);
+  messageLines.push("");
+  messageLines.push(
+    `Choose a button below within ${seconds}s to forward a manual reply. If you do nothing, the bot will respond automatically.`,
+  );
+
+  const rows = manualOptions.map((opt) =>
+    new Api.KeyboardButtonRow({
+      buttons: [
+        new Api.KeyboardButtonCallback({
+          text: opt.label,
+          data: Buffer.from(opt.id),
+        }),
+      ],
+    }),
+  );
+
+  try {
+    await client.sendMessage(manualPeer, {
+      message: messageLines.join("\n"),
+      buttons: new Api.ReplyInlineMarkup({ rows }),
+    });
+  } catch (error) {
+    console.warn(
+      `Failed to send manual intervention prompt to ${manualResponderId}:`,
+      (error as any)?.message || error,
+    );
+    return null;
+  }
+
+  const intervention: ManualIntervention = {
+    token,
+    conversationKey: params.conversationKey,
+    manualResponderId,
+    manualPeer,
+    originalPeer: params.originalPeer,
+    originalMessageId: params.originalMessageId,
+    originalSenderId: params.senderIdString,
+    chatId: params.chatId,
+    isGroup: params.isGroup,
+    options: manualOptions,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + params.wakeUpDelayMs,
+    responded: false,
+    composeStartedAt: params.composeStartedAt,
+    personaLabel: params.personaLabel,
+  };
+
+  manualInterventions.set(token, intervention);
+  manualConversationIndex.set(params.conversationKey, token);
+
+  console.log(
+    `Escalation prompt sent to ${manualResponderId} for contact ${params.senderIdString}. Options: ${manualOptions.length}`,
+  );
+
+  return intervention;
+}
+
+async function notifyManualInterventionExpired(
+  intervention: ManualIntervention,
+  client: any,
+  autoReplyText: string,
+): Promise<void> {
+  try {
+    const preview = truncateForPreview(autoReplyText, 200);
+    const message = preview
+      ? `⏰ No manual reply was selected for ${intervention.originalSenderId}. Sent automated response instead:\n${preview}`
+      : `⏰ No manual reply was selected for ${intervention.originalSenderId}. Sent automated response instead.`;
+    await client.sendMessage(intervention.manualPeer, { message });
+  } catch (error) {
+    console.warn("Failed to send manual escalation timeout notice:", (error as any)?.message || error);
+  }
+}
+
 async function resolveInputPeerSafe(client: any, message: any): Promise<any | undefined> {
   try {
     const byMessage = await message.getInputChat?.();
@@ -408,13 +660,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   const conversationKey = chatId ?? peerKey ?? senderIdString;
   const needsWakeUp = shouldWakeUp(senderIdString, chatId);
 
-  if (needsWakeUp) {
-    const wakeUpDelay = getWakeUpDelay();
-    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay/1000)}s delay)...`);
-    await sleep(wakeUpDelay);
-    console.log(`✅ Bot awake and ready to respond`);
-  }
-
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -453,6 +698,67 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   const composeStartedAt = Date.now();
   const replyText = await getResponse(llmContext) || "Ttyl xoxo";
+  const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
+
+  // Mark the incoming message as read before any additional waiting
+  try {
+    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
+    const maxId = (message as any)?.id || 0;
+    if (peer && maxId) {
+      await (client as any)
+        .invoke(
+          new Api.messages.ReadHistory({
+            peer,
+            maxId,
+          })
+        )
+        .catch(() => { });
+    }
+  } catch (e) {
+    console.warn("Failed to mark message as read:", (e as any)?.message || e);
+  }
+
+  const isGroupContext = isPeerChatOrChannel(message?.peerId);
+  let wakeUpDelay = 0;
+  let manualIntervention: ManualIntervention | null = null;
+  if (needsWakeUp) {
+    wakeUpDelay = getWakeUpDelay();
+    manualIntervention = await maybeStartManualIntervention({
+      client,
+      conversationKey,
+      senderIdString,
+      messageText: typeof messageText === "string" ? messageText : String(messageText ?? ""),
+      personaLabel,
+      llmContext,
+      autoReplyText: replyText,
+      wakeUpDelayMs: wakeUpDelay,
+      originalPeer: inputPeer || message.peerId,
+      originalMessageId: Number((message as any)?.id) || 0,
+      isGroup: isGroupContext,
+      chatId,
+      composeStartedAt,
+    });
+
+    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay / 1000)}s delay)...`);
+    await sleep(wakeUpDelay);
+    console.log(`✅ Bot awake and ready to respond`);
+
+    if (manualIntervention && manualIntervention.responded) {
+      cleanupManualIntervention(manualIntervention.token);
+      console.log(
+        `Manual override reply already sent for ${senderIdString}. Skipping automated response.`,
+      );
+      return;
+    }
+
+    if (manualIntervention) {
+      cleanupManualIntervention(manualIntervention.token);
+      await notifyManualInterventionExpired(manualIntervention, client, replyText);
+      console.log(
+        `Manual override window expired for ${senderIdString}. Continuing with automated reply.`,
+      );
+    }
+  }
 
   // inputPeer already resolved above; if not available, we still try to proceed
 
@@ -491,23 +797,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     appConfig().waitBeforeTypingMs.min,
     appConfig().waitBeforeTypingMs.max
   );
-  // Mark the incoming message as read right before starting the wait timer
-  try {
-    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
-    const maxId = (message as any)?.id || 0;
-    if (peer && maxId) {
-      await (client as any)
-        .invoke(
-          new Api.messages.ReadHistory({
-            peer,
-            maxId,
-          })
-        )
-        .catch(() => { });
-    }
-  } catch (e) {
-    console.warn("Failed to mark message as read:", (e as any)?.message || e);
-  }
   await sleep(waitBefore);
 
   // Phase 2: show typing for configured duration
@@ -521,7 +810,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // Phase 3: send reply and stop typing
   let outboundRecorded = false;
   try {
-    const isGroupContext = isPeerChatOrChannel(message?.peerId);
     const sendOptions: any = { message: replyText };
     if (isGroupContext) {
       sendOptions.replyTo = (message as any).id;
@@ -532,7 +820,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       recordOutbound(senderIdString, Date.now() - composeStartedAt);
       outboundRecorded = true;
     }
-    console.log(`Replied to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
+    console.log(`Replied to ${senderIdString} using ${personaLabel}: "${replyText}"`);
 
     // Update last interaction time after successful response
     updateLastInteraction(senderIdString, chatId);
@@ -541,7 +829,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
     // Fallback: try using the API directly
     try {
-      const isGroupContext = isPeerChatOrChannel(message?.peerId);
       const sendParams: any = {
         peer: inputPeer || message.peerId,
         message: replyText,
@@ -555,7 +842,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         recordOutbound(senderIdString, Date.now() - composeStartedAt);
         outboundRecorded = true;
       }
-      console.log(`Replied via API to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
+      console.log(`Replied via API to ${senderIdString} using ${personaLabel}: "${replyText}"`);
 
       // Update last interaction time after successful response
       updateLastInteraction(senderIdString, chatId);
@@ -566,4 +853,112 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     stopTyping();
   }
   // TODO: Add logic to delete or end chat in some cases
+}
+
+async function safeAnswer(event: CallbackQueryEvent, message: string): Promise<void> {
+  try {
+    await event.answer({ message, cacheTime: 0 });
+  } catch { }
+}
+
+export async function manualResponseCallbackHandler(event: CallbackQueryEvent): Promise<void> {
+  const dataBuf = event.data;
+  const client = (event as any)?._client;
+  if (!dataBuf || !client) {
+    return;
+  }
+
+  const payload = dataBuf.toString();
+  if (!payload.startsWith("manual|")) {
+    return;
+  }
+
+  const parts = payload.split("|");
+  if (parts.length !== 3) {
+    await safeAnswer(event, "Invalid selection.");
+    return;
+  }
+
+  const token = parts[1];
+  const optionIndex = Number(parts[2]);
+  if (!Number.isFinite(optionIndex)) {
+    await safeAnswer(event, "Unknown option.");
+    return;
+  }
+
+  const intervention = manualInterventions.get(token);
+  if (!intervention) {
+    await safeAnswer(event, "This prompt has expired.");
+    return;
+  }
+
+  const responderId = toIdStringSafe((event.query as any)?.userId ?? (event.sender as any)?.id);
+  if (
+    intervention.manualResponderId &&
+    responderId &&
+    intervention.manualResponderId !== responderId
+  ) {
+    await safeAnswer(event, "Not authorized for this prompt.");
+    return;
+  }
+
+  if (intervention.responded) {
+    await safeAnswer(event, "Reply already sent.");
+    return;
+  }
+
+  const option = intervention.options[optionIndex];
+  if (!option) {
+    await safeAnswer(event, "Unknown option.");
+    return;
+  }
+
+  intervention.responded = true;
+  intervention.responseText = option.text;
+  intervention.respondedAt = Date.now();
+
+  try {
+    const sendOptions: any = { message: option.text };
+    if (intervention.isGroup && intervention.originalMessageId) {
+      sendOptions.replyTo = intervention.originalMessageId;
+    }
+    await client.sendMessage(intervention.originalPeer, sendOptions);
+    recordOutbound(intervention.originalSenderId, Date.now() - intervention.composeStartedAt);
+    updateLastInteraction(intervention.originalSenderId, intervention.chatId);
+    console.log(
+      `Manual override option ${optionIndex + 1} sent to ${intervention.originalSenderId}.`,
+    );
+  } catch (error) {
+    console.error("Failed to forward manual override reply:", error);
+    intervention.responded = false;
+    intervention.responseText = undefined;
+    intervention.respondedAt = undefined;
+    await safeAnswer(event, "Failed to send reply.");
+    return;
+  }
+
+  await safeAnswer(event, "Reply sent!");
+
+  try {
+    const sourceMessage = await event.getMessage().catch(() => null);
+    if (sourceMessage && typeof sourceMessage.message === "string") {
+      const note = `\n\n✅ Sent option ${optionIndex + 1} to ${intervention.originalSenderId}.`;
+      const updatedText = sourceMessage.message.includes(note.trim())
+        ? sourceMessage.message
+        : `${sourceMessage.message}${note}`;
+      await event
+        .edit({ message: event.messageId, text: updatedText, buttons: [] })
+        .catch(() => { });
+    }
+  } catch (error) {
+    console.warn("Failed to edit manual escalation message:", (error as any)?.message || error);
+  }
+
+  try {
+    await client.sendMessage(intervention.manualPeer, {
+      message: `✅ Forwarded option ${optionIndex + 1} to ${intervention.originalSenderId}.`,
+    });
+  } catch (error) {
+    console.warn("Failed to send escalation confirmation:", (error as any)?.message || error);
+  }
 }

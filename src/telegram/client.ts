@@ -4,9 +4,10 @@ import { TelegramClient } from "telegram";
 import { LogLevel } from "telegram/extensions/Logger";
 import { StringSession } from "telegram/sessions";
 import { NewMessage } from "telegram/events";
+import { CallbackQuery } from "telegram/events/CallbackQuery";
 // @ts-ignore - input module doesn't have types
 import input from "input";
-import { messageHandler } from "./handlers";
+import { messageHandler, manualResponseCallbackHandler, resetManualInterventions } from "./handlers";
 import { botStarted, botStopped } from "../metrics";
 import { generateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
@@ -17,6 +18,7 @@ let client: TelegramClient;
 let isRunning = false;
 let isStopping = false;
 let messageEvent: NewMessage | undefined;
+let callbackEvent: CallbackQuery | undefined;
 
 type GroupCacheEntry = {
   title: string;
@@ -309,8 +311,11 @@ export async function startBot(): Promise<ControlResponse> {
 
     await Promise.race([setupPromise, timeoutPromise]);
     
+    resetManualInterventions();
     messageEvent = new NewMessage({});
     client.addEventHandler(messageHandler, messageEvent);
+    callbackEvent = new CallbackQuery({});
+    client.addEventHandler(manualResponseCallbackHandler, callbackEvent);
     isRunning = true;
     botStarted();
     console.log("Bot started and is listening for messages.");
@@ -854,7 +859,13 @@ async function teardownClient(): Promise<void> {
         if (messageEvent) {
           client.removeEventHandler(messageHandler, messageEvent);
         }
+        if (callbackEvent) {
+          client.removeEventHandler(manualResponseCallbackHandler, callbackEvent);
+        }
+        resetManualInterventions();
       } catch {}
+      messageEvent = undefined;
+      callbackEvent = undefined;
       try { await client.destroy(); } catch {}
     }
   } finally {

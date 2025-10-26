@@ -134,6 +134,16 @@ class BotController {
                 this.saveOpenrouterKey();
             });
         }
+        this.manualResponderInput = document.getElementById('manualResponderInput');
+        this.manualResponderSave = document.getElementById('manualResponderSave');
+        this.manualResponderClear = document.getElementById('manualResponderClear');
+        this.manualResponderStatus = document.getElementById('manualResponderStatus');
+        if (this.manualResponderSave) {
+            this.manualResponderSave.addEventListener('click', () => this.saveManualResponder());
+        }
+        if (this.manualResponderClear) {
+            this.manualResponderClear.addEventListener('click', () => this.clearManualResponder());
+        }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
         this.accountApiHashInput = document.getElementById('accountApiHash');
@@ -295,6 +305,9 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        // Load wake-up escalation configuration
+        this.loadWakeConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -504,6 +517,68 @@ class BotController {
         } catch (error) {
             this.log('❌ Error loading LLM config: ' + error.message);
         }
+    }
+
+    updateManualResponderStatus(value) {
+        const statusEl = this.manualResponderStatus;
+        if (!statusEl) return;
+        const trimmed = (value || '').trim();
+        statusEl.textContent = trimmed
+            ? `Forwarding wake-up prompts to ${trimmed}`
+            : 'No escalation contact configured.';
+    }
+
+    async loadWakeConfig() {
+        try {
+            const response = await fetch('/api/config/wakeup');
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.message || 'Failed to load wake-up configuration');
+            }
+            const saved = typeof data.manualResponderChatId === 'string' ? data.manualResponderChatId : '';
+            if (this.manualResponderInput) {
+                this.manualResponderInput.value = saved;
+            }
+            this.updateManualResponderStatus(saved);
+            this.log('Wake-up escalation config loaded');
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Unable to load wake-up escalation config';
+            this.log('❌ ' + message);
+            this.updateManualResponderStatus('');
+        }
+    }
+
+    async saveManualResponder() {
+        if (!this.manualResponderInput) return;
+        const raw = (this.manualResponderInput.value || '').trim();
+        try {
+            const response = await fetch('/api/config/wakeup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ manualResponderChatId: raw }),
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+                throw new Error(data?.message || 'Failed to save escalation contact');
+            }
+            const saved = typeof data.manualResponderChatId === 'string' ? data.manualResponderChatId : '';
+            if (this.manualResponderInput) {
+                this.manualResponderInput.value = saved;
+            }
+            this.updateManualResponderStatus(saved);
+            const message = data?.message || (saved ? `Escalations will be sent to ${saved}.` : 'Escalations disabled.');
+            this.log(`✅ ${message}`);
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to save escalation contact.';
+            this.log('❌ ' + message);
+        }
+    }
+
+    async clearManualResponder() {
+        if (this.manualResponderInput) {
+            this.manualResponderInput.value = '';
+        }
+        await this.saveManualResponder();
     }
 
     async loadAccounts(logMessage = true) {

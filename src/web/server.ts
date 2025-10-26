@@ -142,6 +142,15 @@ export function startWebServer(): void {
         updates.activeAccountId = persisted.activeAccountId ?? null;
       }
 
+      if (Object.prototype.hasOwnProperty.call(persisted, "manualResponderChatId")) {
+        const raw = (persisted as any).manualResponderChatId;
+        if (typeof raw === "string") {
+          updates.manualResponderChatId = raw;
+        } else if (raw === null) {
+          updates.manualResponderChatId = null;
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         setConfig(updates as Partial<ReturnType<typeof appConfig>>);
       }
@@ -355,6 +364,35 @@ export function startWebServer(): void {
     res.json({
       accounts: accounts.map((account) => sanitizeAccount(account as any)),
       activeAccountId,
+    });
+  });
+
+  app.get("/api/config/wakeup", (req: Request, res: Response) => {
+    const cfg = appConfig() as any;
+    res.json({
+      manualResponderChatId: cfg.manualResponderChatId ?? null,
+    });
+  });
+
+  app.post("/api/config/wakeup", (req: Request, res: Response) => {
+    const { manualResponderChatId } = req.body || {};
+    let next: string | null = null;
+    if (typeof manualResponderChatId === "string") {
+      const trimmed = manualResponderChatId.trim();
+      next = trimmed.length > 0 ? trimmed : null;
+    } else if (manualResponderChatId === null) {
+      next = null;
+    }
+
+    setConfig({ manualResponderChatId: next } as Partial<ReturnType<typeof appConfig>>);
+    const cfg = appConfig() as any;
+    const saved = cfg.manualResponderChatId ?? null;
+    res.status(201).json({
+      success: true,
+      manualResponderChatId: saved,
+      message: saved
+        ? `Wake-up escalation prompts will be sent to ${saved}.`
+        : "Manual escalation recipient cleared.",
     });
   });
 

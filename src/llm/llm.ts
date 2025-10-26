@@ -318,3 +318,84 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
   console.log(`[LLM] Final: hard fallback response`);
   return HARD_FALLBACK;
 }
+
+function tryParseJsonArray(raw: string): string[] | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const values = parsed
+        .map((entry) => (typeof entry === "string" ? entry : entry != null ? String(entry) : ""))
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      if (values.length > 0) {
+        return values;
+      }
+    }
+  } catch {
+    const start = raw.indexOf("[");
+    const end = raw.lastIndexOf("]");
+    if (start >= 0 && end > start) {
+      return tryParseJsonArray(raw.slice(start, end + 1));
+    }
+  }
+  return null;
+}
+
+function normalizeOptionText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const withoutQuotes = trimmed.replace(/^['"\s]+|['"\s]+$/g, "");
+  return withoutQuotes.replace(/\s+/g, " ");
+}
+
+function parseReplyCandidates(raw: string, desired: number): string[] {
+  const limit = Math.max(1, Math.min(6, desired));
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return [];
+
+  const fromJson = tryParseJsonArray(trimmed);
+  const collected: string[] = [];
+
+  const pushUnique = (candidate: string) => {
+    const normal = normalizeOptionText(candidate);
+    if (!normal) return;
+    if (collected.some((existing) => existing.toLowerCase() === normal.toLowerCase())) return;
+    collected.push(normal);
+  };
+
+  if (fromJson) {
+    for (const entry of fromJson) {
+      pushUnique(entry);
+      if (collected.length >= limit) break;
+    }
+    return collected.slice(0, limit);
+  }
+
+  const lines = trimmed
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*\d]+[\).:\-]?\s*)/, ""))
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    pushUnique(line);
+    if (collected.length >= limit) break;
+  }
+
+  return collected.slice(0, limit);
+}
+
+export async function generateSampleReplies(messages: ChatMessage[], desiredCount = 3): Promise<string[]> {
+  const count = Math.max(1, Math.min(5, Math.floor(desiredCount)));
+  const prompt: ChatMessage[] = [
+    ...messages,
+    {
+      role: "user",
+      content: `Provide ${count} short, natural replies the assistant could send next. Each reply must feel human, stay in character, and keep the conversation going. Respond with a JSON array of ${count} strings and nothing else.`,
+    },
+  ];
+
+  const raw = await requestLLMCompletion(prompt, { fallback: "" });
+  const parsed = parseReplyCandidates(raw, count);
+  return parsed;
+}

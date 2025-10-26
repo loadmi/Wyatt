@@ -1524,7 +1524,7 @@
                 hidden>
                 <div class="panel-card">
                     <h2 class="panel-title">Persona &amp; LLM Settings</h2>
-                    <div class="config-grid"> 
+                    <div class="config-grid">
                         <div class="form-field">
                             <label for="personaSelect">New Interaction Personality</label>
                             <select id="personaSelect" class="persona-select">
@@ -1545,15 +1545,29 @@
                             </select>
                         </div> 
                     </div> 
-                        <div class="form-field" id="openrouterKeyRow" style="display:none"> 
-                        <label for="openrouterApiKeyInput">OpenRouter API Key</label> 
-                        <div class="inline-actions"> 
-                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off"> 
-                            <button type="button" id="openrouterApiKeySave">Save</button> 
-                            <button type="button" id="openrouterApiKeyClear">Clear</button> 
-                            <small id="openrouterKeyStatus" aria-live="polite"></small> 
-                        </div> 
-                    </div> 
+                        <div class="form-field" id="openrouterKeyRow" style="display:none">
+                        <label for="openrouterApiKeyInput">OpenRouter API Key</label>
+                        <div class="inline-actions">
+                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off">
+                            <button type="button" id="openrouterApiKeySave">Save</button>
+                            <button type="button" id="openrouterApiKeyClear">Clear</button>
+                            <small id="openrouterKeyStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-card">
+                    <h2 class="panel-title">Wake-up Escalation</h2>
+                    <p class="panel-subtext">Forward wake-up triggers to a trusted reviewer who can choose a manual reply before the bot resumes.</p>
+                    <div class="form-field">
+                        <label for="manualResponderInput">Escalation recipient</label>
+                        <div class="inline-actions">
+                            <input type="text" id="manualResponderInput" placeholder="Telegram user ID or @username" autocomplete="off">
+                            <button type="button" id="manualResponderSave">Save</button>
+                            <button type="button" id="manualResponderClear" class="secondary">Clear</button>
+                        </div>
+                        <small id="manualResponderStatus" aria-live="polite">No escalation contact configured.</small>
+                    </div>
+                    <p class="panel-subtext">The bot shares the triggering message and suggested replies. If no choice is made before the wake-up delay, the automated response is used.</p>
                 </div>
                 <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>
