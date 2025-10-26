@@ -103,6 +103,31 @@
             background-color: #cbd5e1; /* slate-300 */
         }
 
+        /* Ensure chat bubbles have readable text in light theme */
+        .theme-light .chat-bubble {
+            color: #0f172a; /* slate-900 - dark text for light backgrounds */
+        }
+
+        .theme-light .chat-message.outbound .chat-bubble {
+            color: #1e293b; /* slate-800 - ensure readability on blue background */
+        }
+
+        /* Fix bubble tags in chat selector for light theme */
+        .theme-light .chat-list-unread {
+            background: rgba(37, 99, 235, 0.15);
+            color: #1e40af; /* blue-800 for contrast on light bg */
+        }
+
+        .theme-light .chat-list-persona {
+            background: rgba(96, 165, 250, 0.15);
+            color: #1e40af; /* blue-800 for contrast on light bg */
+        }
+
+        .theme-light .chat-list-persona[data-variant="custom"] {
+            background: rgba(236, 72, 153, 0.15);
+            color: #be185d; /* pink-700 for contrast on light bg */
+        }
+
         * {
             box-sizing: border-box;
         }
