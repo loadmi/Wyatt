@@ -20,6 +20,11 @@ export interface MessageDelaysConfig {
   typingKeepaliveMs: number;
 }
 
+export interface HistoryCacheConfig {
+  maxMessagesPerChat: number;
+  maxCachedChats: number;
+}
+
 export interface TelegramAccount {
   id: string;
   label: string;
@@ -85,6 +90,10 @@ const config = {
     },
     typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
   } as MessageDelaysConfig,
+  historyCache: {
+    maxMessagesPerChat: envNumber("MAX_MESSAGES_PER_CHAT", 500),
+    maxCachedChats: envNumber("MAX_CACHED_CHATS", 100),
+  } as HistoryCacheConfig,
 };
 
 export const appConfig = () => config;
@@ -150,6 +159,7 @@ function persistConfig(): void {
       humanEscalationChatId: config.humanEscalationChatId,
       supervisor: config.supervisor,
       messageDelays: config.messageDelays,
+      historyCache: config.historyCache,
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -316,12 +326,26 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
+  // Handle historyCache config updates
+  if (Object.prototype.hasOwnProperty.call(newConfig, "historyCache")) {
+    const historyCacheUpdate = (newConfig as any).historyCache;
+    if (historyCacheUpdate && typeof historyCacheUpdate === 'object') {
+      if (historyCacheUpdate.maxMessagesPerChat !== undefined) {
+        config.historyCache.maxMessagesPerChat = historyCacheUpdate.maxMessagesPerChat;
+      }
+      if (historyCacheUpdate.maxCachedChats !== undefined) {
+        config.historyCache.maxCachedChats = historyCacheUpdate.maxCachedChats;
+      }
+    }
+  }
+
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
   delete (rest as any).humanEscalationChatId;
   delete (rest as any).supervisor;
   delete (rest as any).messageDelays;
+  delete (rest as any).historyCache;
   Object.assign(config, rest);
 
   persistConfig();

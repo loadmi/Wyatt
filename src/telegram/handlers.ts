@@ -7,6 +7,7 @@ import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse, getSuggestedReplies } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
+import { toIdString, toStableChatKey } from "./idUtils";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -17,7 +18,66 @@ type ContextEntry = {
   from: "user" | "me";
   text: string;
 };
-const historyCache = new Map<string, ContextEntry[]>();
+
+// LRU cache implementation with size limits
+class LRUHistoryCache {
+  private cache = new Map<string, { data: ContextEntry[]; lastAccessed: number }>();
+  
+  get(key: string): ContextEntry[] | undefined {
+    const entry = this.cache.get(key);
+    if (entry) {
+      entry.lastAccessed = Date.now();
+      return entry.data;
+    }
+    return undefined;
+  }
+  
+  set(key: string, data: ContextEntry[]): void {
+    const config = appConfig();
+    const maxMessages = config.historyCache?.maxMessagesPerChat || 500;
+    const maxChats = config.historyCache?.maxCachedChats || 100;
+    
+    // Trim messages if exceeding limit
+    const trimmedData = data.length > maxMessages
+      ? data.slice(-maxMessages)
+      : data;
+    
+    // Evict oldest chat if cache is full
+    if (this.cache.size >= maxChats && !this.cache.has(key)) {
+      const oldestKey = this.findOldestKey();
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
+        console.log(`Evicted chat ${oldestKey} from history cache (LRU)`);
+      }
+    }
+    
+    this.cache.set(key, { data: trimmedData, lastAccessed: Date.now() });
+  }
+  
+  private findOldestKey(): string | null {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.lastAccessed < oldestTime) {
+        oldestTime = entry.lastAccessed;
+        oldestKey = key;
+      }
+    }
+    
+    return oldestKey;
+  }
+  
+  clear(): void {
+    this.cache.clear();
+  }
+  
+  size(): number {
+    return this.cache.size;
+  }
+}
+
+const historyCache = new LRUHistoryCache();
 
 const FALLBACK_SUGGESTIONS = [
   { text: "Oh goodness, that's quite something—should I keep them chatting?", emotion: "curious" },
@@ -209,7 +269,7 @@ async function resolveHumanPeer(client: any): Promise<{ input: any; key: string 
   for (const query of queries) {
     try {
       const entity = await client.getInputEntity(query);
-      const key = toIdStringSafe(entity) || toIdStringSafe((entity as any)?.peer) || toIdStringSafe(query) || target;
+      const key = toIdString(entity) || toIdString((entity as any)?.peer) || toIdString(query) || target;
       cachedHumanPeerKey = key;
       cachedHumanPeerRaw = target;
       return { input: entity, key: key || target };
@@ -235,8 +295,8 @@ function findPendingOverrideForMessage(message: any): PendingHumanOverride | und
     if (byReply) return byReply;
   }
 
-  const peerKey = toIdStringSafe(message?.peerId);
-  const senderKey = toIdStringSafe((message?.fromId as any)?.userId);
+  const peerKey = toIdString(message?.peerId);
+  const senderKey = toIdString((message?.fromId as any)?.userId);
   if (peerKey || senderKey) {
     const matches = all.filter(
       (entry) => entry.humanPeerKey === peerKey || entry.humanPeerKey === senderKey,
@@ -335,23 +395,8 @@ function isPeerChatOrChannel(peerId: any): boolean {
   }
 }
 
-function toIdStringSafe(x: any): string | null {
-  try {
-    if (x === null || x === undefined) return null;
-    if (typeof x === "string" || typeof x === "number" || typeof x === "bigint") return String(x);
-    // Prefer explicit peer identifiers first so groups/channels use numeric IDs
-    if (x?.channelId !== undefined) return toIdStringSafe(x.channelId);
-    if (x?.chatId !== undefined) return toIdStringSafe(x.chatId);
-    if (x?.userId !== undefined) return toIdStringSafe(x.userId);
-    if (x?.id !== undefined) return toIdStringSafe(x.id);
-    if (x?.value !== undefined) return toIdStringSafe(x.value);
-    if (typeof x.toString === "function") {
-      const s = x.toString();
-      return s && s !== "[object Object]" ? String(s) : null;
-    }
-  } catch { }
-  return null;
-}
+// ID conversion utilities moved to ./idUtils.ts for consistency
+// Use toIdString() and toStableChatKey() from that module
 
 async function shouldRespondInContext(message: any, client: any): Promise<boolean> {
   const peerId = message?.peerId;
@@ -379,7 +424,7 @@ async function shouldRespondInContext(message: any, client: any): Promise<boolea
           ent instanceof Api.MessageEntityMentionName ||
           ent?.className === "MessageEntityMentionName"
         ) {
-          const entUserIdStr = toIdStringSafe((ent as any).userId);
+          const entUserIdStr = toIdString((ent as any).userId);
           if (entUserIdStr && self.idString && entUserIdStr === self.idString) {
             return true;
           }
@@ -436,8 +481,8 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
   if (!configured) return false;
 
   const override = findPendingOverrideForMessage(message);
-  const peerKey = toIdStringSafe(message?.peerId);
-  const senderKey = toIdStringSafe((message?.fromId as any)?.userId);
+  const peerKey = toIdString(message?.peerId);
+  const senderKey = toIdString((message?.fromId as any)?.userId);
   const candidates = [peerKey, senderKey];
 
   if (override && !candidates.includes(override.humanPeerKey)) {
@@ -586,7 +631,12 @@ async function applyTypingDelay(client: any, message: any, inputPeer: any): Prom
     .catch(() => { });
 }
 
-async function sendImmediateReply(params: {
+/**
+ * Sends a message with automatic fallback to API method if the high-level method fails.
+ * Handles group context detection and reply-to logic automatically.
+ * @returns true if message was sent successfully, false otherwise
+ */
+async function sendMessageWithFallback(params: {
   client: any;
   message: any;
   inputPeer: any;
@@ -595,23 +645,20 @@ async function sendImmediateReply(params: {
   chatId?: string;
   startedAt: number;
   personaRecord: any;
+  logPrefix?: string;
 }): Promise<boolean> {
-  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord } = params;
+  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord, logPrefix = "" } = params;
   const trimmed = (replyText || "").trim();
   if (!trimmed) {
-    console.warn("Manual override produced an empty reply; skipping send.");
+    console.warn("Empty reply text; skipping send.");
     return false;
   }
 
-  // Apply reading delay (marks as read and waits)
-  await applyReadingDelay(client, message, inputPeer);
-  
-  // Apply typing delay (shows typing indicator and waits)
-  await applyTypingDelay(client, message, inputPeer);
-
+  const isGroupContext = isPeerChatOrChannel(message?.peerId);
   let outboundRecorded = false;
+
+  // Try high-level sendMessage first
   try {
-    const isGroupContext = isPeerChatOrChannel(message?.peerId);
     const sendOptions: any = { message: trimmed };
     if (isGroupContext) {
       sendOptions.replyTo = (message as any).id;
@@ -620,18 +667,18 @@ async function sendImmediateReply(params: {
     recordOutbound(senderIdString, Date.now() - startedAt);
     outboundRecorded = true;
     console.log(
-      `✅ Wake-up override reply sent to ${senderIdString} using ${formatPersonaLabel(
+      `✅ ${logPrefix}Reply sent to ${senderIdString} using ${formatPersonaLabel(
         personaRecord?.personaId || getDefaultPersonaId(),
       )}: "${trimmed}"`,
     );
     updateLastInteraction(senderIdString, chatId);
     return true;
   } catch (error) {
-    console.error("Failed to send manual override message:", error);
+    console.error(`${logPrefix}Failed to send message:`, error);
   }
 
+  // Fallback to low-level API
   try {
-    const isGroupContext = isPeerChatOrChannel(message?.peerId);
     const sendParams: any = {
       peer: inputPeer || message.peerId,
       message: trimmed,
@@ -645,17 +692,48 @@ async function sendImmediateReply(params: {
       recordOutbound(senderIdString, Date.now() - startedAt);
     }
     console.log(
-      `✅ Wake-up override reply sent via API to ${senderIdString} using ${formatPersonaLabel(
+      `✅ ${logPrefix}Reply sent via API to ${senderIdString} using ${formatPersonaLabel(
         personaRecord?.personaId || getDefaultPersonaId(),
       )}: "${trimmed}"`,
     );
     updateLastInteraction(senderIdString, chatId);
     return true;
   } catch (apiError) {
-    console.error("Manual override API fallback failed:", apiError);
+    console.error(`${logPrefix}API fallback also failed:`, apiError);
   }
 
   return false;
+}
+
+async function sendImmediateReply(params: {
+  client: any;
+  message: any;
+  inputPeer: any;
+  replyText: string;
+  senderIdString: string;
+  chatId?: string;
+  startedAt: number;
+  personaRecord: any;
+}): Promise<boolean> {
+  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord } = params;
+  
+  // Apply reading delay (marks as read and waits)
+  await applyReadingDelay(client, message, inputPeer);
+  
+  // Apply typing delay (shows typing indicator and waits)
+  await applyTypingDelay(client, message, inputPeer);
+
+  return sendMessageWithFallback({
+    client,
+    message,
+    inputPeer,
+    replyText,
+    senderIdString,
+    chatId,
+    startedAt,
+    personaRecord,
+    logPrefix: "Wake-up override ",
+  });
 }
 
 function formatRecentHistory(context: LLMContextEntry[], maxExchanges: number = 3): string {
@@ -976,16 +1054,20 @@ async function resolveInputPeerSafe(client: any, message: any): Promise<any | un
 }
 
 // Fetches the full text message history with a peer (oldest -> newest order).
-// Note: This may be expensive for very long chats. We cache results per user id.
+// Respects configured limits to prevent memory issues with very long chats.
 async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promise<ContextEntry[]> {
   const cached = historyCache.get(cacheKey);
   const pageSize = 100;
+  const config = appConfig();
+  const maxMessages = config.historyCache?.maxMessagesPerChat || 500;
 
   // Fresh fetch if nothing cached yet
   if (!cached || cached.length === 0) {
     const all: ContextEntry[] = [];
     let offsetId = 0;
-    while (true) {
+    let totalFetched = 0;
+    
+    while (totalFetched < maxMessages) {
       const res: any = await client
         .invoke(
           new Api.messages.GetHistory({
@@ -1010,17 +1092,24 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
       for (const m of res.messages) {
         if (m instanceof Api.Message && typeof m.message === "string" && m.message.length > 0) {
           all.push({ id: m.id, date: Number(m.date) || 0, from: m.out ? "me" : "user", text: m.message });
+          totalFetched++;
+          if (totalFetched >= maxMessages) break;
         }
       }
 
       const last = res.messages[res.messages.length - 1];
       if (!last || typeof last.id !== "number") break;
       offsetId = last.id;
-      if (res.messages.length < pageSize) break;
+      if (res.messages.length < pageSize || totalFetched >= maxMessages) break;
     }
 
     all.sort((a, b) => a.id - b.id);
     historyCache.set(cacheKey, all);
+    
+    if (totalFetched >= maxMessages) {
+      console.log(`History fetch limited to ${maxMessages} messages for ${cacheKey}`);
+    }
+    
     return all;
   }
 
@@ -1028,7 +1117,10 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
   const lastKnownId = cached[cached.length - 1]?.id || 0;
   let more: ContextEntry[] = [];
   let offsetId = 0;
-  while (true) {
+  let totalFetched = 0;
+  const remainingCapacity = maxMessages - cached.length;
+  
+  while (totalFetched < remainingCapacity) {
     const res: any = await client
       .invoke(
         new Api.messages.GetHistory({
@@ -1055,6 +1147,8 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
         // Only add items actually newer than lastKnownId
         if (typeof m.id === "number" && m.id > lastKnownId) {
           more.push({ id: m.id, date: Number(m.date) || 0, from: m.out ? "me" : "user", text: m.message });
+          totalFetched++;
+          if (totalFetched >= remainingCapacity) break;
         }
       }
     }
@@ -1062,7 +1156,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
     const last = res.messages[res.messages.length - 1];
     if (!last || typeof last.id !== "number") break;
     offsetId = last.id;
-    if (res.messages.length < pageSize) break;
+    if (res.messages.length < pageSize || totalFetched >= remainingCapacity) break;
   }
 
   if (more.length > 0) {
@@ -1123,9 +1217,9 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   recordInbound(senderIdString);
 
   // Supervisor contact logic: check mode and determine if supervisor should be contacted
-  const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdStringSafe(message.peerId) : undefined;
+  const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdString(message.peerId) : undefined;
   const chatId = chatIdRaw || undefined; // Convert null to undefined
-  const peerKey = toIdStringSafe(message?.peerId);
+  const peerKey = toIdString(message?.peerId);
   const conversationKey = chatId ?? peerKey ?? senderIdString;
   
   // Check if supervisor should be contacted based on mode
@@ -1200,50 +1294,16 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   // Phase 2: Apply typing delay (shows typing indicator and waits)
   await applyTypingDelay(client, message, inputPeer);
 
-  // Phase 3: send reply
-  let outboundRecorded = false;
-  try {
-    const isGroupContext = isPeerChatOrChannel(message?.peerId);
-    const sendOptions: any = { message: replyText };
-    if (isGroupContext) {
-      sendOptions.replyTo = (message as any).id;
-    }
-    await client.sendMessage(inputPeer || message.peerId, sendOptions);
-
-    if (!outboundRecorded) {
-      recordOutbound(senderIdString, Date.now() - composeStartedAt);
-      outboundRecorded = true;
-    }
-    console.log(`Replied to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
-
-    // Update last interaction time after successful response
-    updateLastInteraction(senderIdString, chatId);
-  } catch (error) {
-    console.error("Failed to send message:", error);
-
-    // Fallback: try using the API directly
-    try {
-      const isGroupContext = isPeerChatOrChannel(message?.peerId);
-      const sendParams: any = {
-        peer: inputPeer || message.peerId,
-        message: replyText,
-        randomId: bigInt(Math.floor(Math.random() * 1e16)),
-      };
-      if (isGroupContext) {
-        sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
-      }
-      await client.invoke(new Api.messages.SendMessage(sendParams));
-      if (!outboundRecorded) {
-        recordOutbound(senderIdString, Date.now() - composeStartedAt);
-        outboundRecorded = true;
-      }
-      console.log(`Replied via API to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
-
-      // Update last interaction time after successful response
-      updateLastInteraction(senderIdString, chatId);
-    } catch (apiError) {
-      console.error("API fallback also failed:", apiError);
-    }
-  }
+  // Phase 3: Send reply using unified message sending function
+  await sendMessageWithFallback({
+    client,
+    message,
+    inputPeer,
+    replyText,
+    senderIdString,
+    chatId,
+    startedAt: composeStartedAt,
+    personaRecord,
+  });
   // TODO: Add logic to delete or end chat in some cases
 }

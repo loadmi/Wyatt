@@ -12,6 +12,7 @@ import { generateBlendMessage, SentimentSample } from "../llm/llm";
 import { getActiveTelegramAccount, updateTelegramAccount, getTelegramAccounts } from "../config";
 import type { TelegramAccount } from "../config";
 import { getChatPersonaSummary } from "./chatPersonality";
+import { toIdString, toStableChatKey } from "./idUtils";
 
 let client: TelegramClient;
 let isRunning = false;
@@ -354,36 +355,8 @@ function ensureClientReady(): void {
   }
 }
 
-function toDialogKey(raw: any): string | null {
-  try {
-    if (raw === null || raw === undefined) return null;
-    if (typeof raw === "string") return raw;
-    if (typeof raw === "number" || typeof raw === "bigint") return String(raw);
-    if (raw?.value !== undefined) return toDialogKey(raw.value);
-    if (raw?.id !== undefined) return toDialogKey(raw.id);
-    if (typeof raw.toString === "function") {
-      const str = raw.toString();
-      return str && str !== "[object Object]" ? str : null;
-    }
-  } catch { }
-  return null;
-}
-
-// Prefer stable, Telegram-native numeric IDs for chats/groups/channels
-// so that server APIs and runtime handlers use the same keys.
-function toStableChatKey(entity: any, dialog?: any): string | null {
-  try {
-    // Prefer explicit fields first
-    if (entity?.userId !== undefined && entity?.userId !== null) return toDialogKey(entity.userId);
-    if (entity?.channelId !== undefined && entity?.channelId !== null) return toDialogKey(entity.channelId);
-    if (entity?.chatId !== undefined && entity?.chatId !== null) return toDialogKey(entity.chatId);
-    // Fall back to entity.id, which for Users/Chats/Channels is typically numeric
-    if (entity?.id !== undefined && entity?.id !== null) return toDialogKey(entity.id);
-    // As a last resort, consider dialog.id if present
-    if (dialog?.id !== undefined && dialog?.id !== null) return toDialogKey(dialog.id);
-  } catch { }
-  return null;
-}
+// ID conversion utilities moved to ./idUtils.ts for consistency
+// Use toIdString() and toStableChatKey() from that module
 
 function resolveDialogType(dialog: any, entity: any): ChatCacheEntry["type"] {
   if (dialog?.isUser) return "private";
