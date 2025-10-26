@@ -66,6 +66,7 @@ const config = {
   openrouterApiKey: "",
   telegramAccounts: [] as TelegramAccount[],
   activeAccountId: null as string | null,
+  humanEscalationChatId: "",
 };
 
 export const appConfig = () => config;
@@ -128,6 +129,7 @@ function persistConfig(): void {
       systemPrompt: (config as any).systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,
+      humanEscalationChatId: config.humanEscalationChatId,
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -170,9 +172,21 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(newConfig, "humanEscalationChatId")) {
+    const raw = (newConfig as any).humanEscalationChatId;
+    if (typeof raw === "string") {
+      config.humanEscalationChatId = raw.trim();
+    } else if (raw == null) {
+      config.humanEscalationChatId = "";
+    } else {
+      config.humanEscalationChatId = String(raw).trim();
+    }
+  }
+
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
+  delete (rest as any).humanEscalationChatId;
   Object.assign(config, rest);
 
   persistConfig();

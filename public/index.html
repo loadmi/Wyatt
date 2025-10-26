@@ -1524,7 +1524,7 @@
                 hidden>
                 <div class="panel-card">
                     <h2 class="panel-title">Persona &amp; LLM Settings</h2>
-                    <div class="config-grid"> 
+                    <div class="config-grid">
                         <div class="form-field">
                             <label for="personaSelect">New Interaction Personality</label>
                             <select id="personaSelect" class="persona-select">
@@ -1545,15 +1545,28 @@
                             </select>
                         </div> 
                     </div> 
-                        <div class="form-field" id="openrouterKeyRow" style="display:none"> 
-                        <label for="openrouterApiKeyInput">OpenRouter API Key</label> 
-                        <div class="inline-actions"> 
-                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off"> 
-                            <button type="button" id="openrouterApiKeySave">Save</button> 
-                            <button type="button" id="openrouterApiKeyClear">Clear</button> 
-                            <small id="openrouterKeyStatus" aria-live="polite"></small> 
-                        </div> 
-                    </div> 
+                        <div class="form-field" id="openrouterKeyRow" style="display:none">
+                        <label for="openrouterApiKeyInput">OpenRouter API Key</label>
+                        <div class="inline-actions">
+                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off">
+                            <button type="button" id="openrouterApiKeySave">Save</button>
+                            <button type="button" id="openrouterApiKeyClear">Clear</button>
+                            <small id="openrouterKeyStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-card">
+                    <h2 class="panel-title">Wake-Up Overrides</h2>
+                    <p class="panel-subtext">Forward incoming messages to a trusted Telegram contact when the bot is waking up after inactivity. They can choose a suggested reply or write their own before the bot responds automatically.</p>
+                    <div class="form-field">
+                        <label for="escalationContactInput">Supervisor contact or chat</label>
+                        <input type="text" id="escalationContactInput" placeholder="@username or numeric ID" autocomplete="off">
+                        <small>Leave blank to disable manual wake-up review. Make sure the active Telegram account can message this contact.</small>
+                    </div>
+                    <div class="inline-actions">
+                        <button type="button" id="escalationSaveBtn">Save</button>
+                        <small id="escalationStatus" aria-live="polite"></small>
+                    </div>
                 </div>
                 <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>

@@ -14,6 +14,7 @@ export type PersistedState = {
    activeAccountId?: string | null;
    // Track last interaction times per user/chat for wake up functionality
    interactionTracker?: Record<string, { lastInteraction: number; chatId: string }>;
+   humanEscalationChatId?: string;
    chatPersonalities?: Record<string, {
      personaId: string;
      systemPrompt: string;

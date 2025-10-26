@@ -93,6 +93,9 @@ class BotController {
         this.openrouterApiKeySave = document.getElementById('openrouterApiKeySave');
         this.openrouterApiKeyClear = document.getElementById('openrouterApiKeyClear');
         this.openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
+        this.escalationContactInput = document.getElementById('escalationContactInput');
+        this.escalationSaveBtn = document.getElementById('escalationSaveBtn');
+        this.escalationStatus = document.getElementById('escalationStatus');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -134,6 +137,9 @@ class BotController {
                 this.saveOpenrouterKey();
             });
         }
+        if (this.escalationSaveBtn) {
+            this.escalationSaveBtn.addEventListener('click', () => this.saveEscalationContact());
+        }
         this.accountLabelInput = document.getElementById('accountLabel');
         this.accountApiIdInput = document.getElementById('accountApiId');
         this.accountApiHashInput = document.getElementById('accountApiHash');
@@ -146,6 +152,7 @@ class BotController {
         this._accountNoticeTimer = null;
         this._loginPollInterval = null;
         this._loginPollBusy = false;
+        this._escalationStatusTimer = null;
         this.chatListContainer = document.getElementById('chatList');
         this.chatEmptyState = document.getElementById('chatEmptyState');
         this.chatRefreshBtn = document.getElementById('chatRefreshBtn');
@@ -295,6 +302,9 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        // Load wake-up override configuration
+        this.loadEscalationConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -503,6 +513,76 @@ class BotController {
             this.log('LLM config loaded');
         } catch (error) {
             this.log('❌ Error loading LLM config: ' + error.message);
+        }
+    }
+
+    async loadEscalationConfig() {
+        if (!this.escalationContactInput) return;
+        if (this._escalationStatusTimer) {
+            clearTimeout(this._escalationStatusTimer);
+            this._escalationStatusTimer = null;
+        }
+        try {
+            const response = await fetch('/api/config/escalation');
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            const data = await response.json();
+            const contact = typeof data.contact === 'string' ? data.contact : '';
+            this.escalationContactInput.value = contact;
+            if (this.escalationStatus) {
+                this.escalationStatus.textContent = '';
+            }
+        } catch (error) {
+            if (this.escalationStatus) {
+                this.escalationStatus.textContent = 'Failed to load';
+            }
+            this.log('❌ Error loading wake-up override config: ' + error.message);
+            this._escalationStatusTimer = setTimeout(() => {
+                if (this.escalationStatus) this.escalationStatus.textContent = '';
+                this._escalationStatusTimer = null;
+            }, 4000);
+        }
+    }
+
+    async saveEscalationContact() {
+        if (!this.escalationContactInput) return;
+        const contact = this.escalationContactInput.value.trim();
+        if (this.escalationStatus) {
+            this.escalationStatus.textContent = 'Saving...';
+        }
+        if (this._escalationStatusTimer) {
+            clearTimeout(this._escalationStatusTimer);
+            this._escalationStatusTimer = null;
+        }
+        try {
+            const response = await fetch('/api/config/escalation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact }),
+            });
+            const data = await response.json();
+            if (!response.ok || (data && data.success === false)) {
+                throw new Error((data && data.message) || ('HTTP ' + response.status));
+            }
+            const saved = typeof data.contact === 'string' ? data.contact : contact;
+            if (this.escalationContactInput) {
+                this.escalationContactInput.value = saved;
+            }
+            if (this.escalationStatus) {
+                this.escalationStatus.textContent = saved ? 'Saved' : 'Disabled';
+            }
+            this.log(saved ? `Wake-up override contact set to ${saved}` : 'Wake-up override disabled');
+        } catch (error) {
+            if (this.escalationStatus) {
+                this.escalationStatus.textContent = 'Failed to save';
+            }
+            this.log('❌ Error saving wake-up override contact: ' + error.message);
+        } finally {
+            this._escalationStatusTimer = setTimeout(() => {
+                if (this.escalationStatus) this.escalationStatus.textContent = '';
+                this._escalationStatusTimer = null;
+            }, 4000);
         }
     }
 

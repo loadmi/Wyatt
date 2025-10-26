@@ -142,6 +142,10 @@ export function startWebServer(): void {
         updates.activeAccountId = persisted.activeAccountId ?? null;
       }
 
+      if (typeof (persisted as any).humanEscalationChatId === "string") {
+        updates.humanEscalationChatId = (persisted as any).humanEscalationChatId;
+      }
+
       if (Object.keys(updates).length > 0) {
         setConfig(updates as Partial<ReturnType<typeof appConfig>>);
       }
@@ -545,6 +549,18 @@ export function startWebServer(): void {
     setConfig({ openrouterApiKey: next } as any);
     const cfg = appConfig() as any;
     res.status(201).json({ success: true, hasOpenrouterKey: !!(cfg.openrouterApiKey && cfg.openrouterApiKey.trim()) });
+  });
+
+  app.get("/api/config/escalation", (req: Request, res: Response) => {
+    const contact = (appConfig() as any).humanEscalationChatId || "";
+    res.json({ contact });
+  });
+
+  app.post("/api/config/escalation", (req: Request, res: Response) => {
+    const { contact } = req.body || {};
+    const next = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
+    setConfig({ humanEscalationChatId: next } as any);
+    res.status(201).json({ success: true, contact: (appConfig() as any).humanEscalationChatId || "" });
   });
 
   app.listen(PORT, async () => {
