@@ -850,7 +850,14 @@ class BotController {
                 this.supervisorStatus.dataset.variant = 'success';
             }
             
-            const modeLabel = mode === 'wake-up' ? 'Wake-Up' : mode === 'always' ? 'Always' : 'Disabled';
+            let modeLabel;
+            if (mode === 'wake-up') {
+                modeLabel = 'Wake-Up';
+            } else if (mode === 'always') {
+                modeLabel = 'Always';
+            } else {
+                modeLabel = 'Disabled';
+            }
             this.log(`✅ Supervisor configuration saved (Mode: ${modeLabel})`);
             
             // Reload to ensure UI is in sync (but preserve the success message)
@@ -1586,11 +1593,14 @@ class BotController {
             return;
         }
 
-        const typeLabel = chat.type === 'private'
-            ? 'Direct chat'
-            : chat.type === 'group'
-                ? 'Group conversation'
-                : 'Channel';
+        let typeLabel;
+        if (chat.type === 'private') {
+            typeLabel = 'Direct chat';
+        } else if (chat.type === 'group') {
+            typeLabel = 'Group conversation';
+        } else {
+            typeLabel = 'Channel';
+        }
 
         this.chatTitleEl.textContent = chat.title || 'Conversation';
 
@@ -1783,9 +1793,14 @@ class BotController {
         }
 
         const personaId = typeof persona.personaId === 'string' ? persona.personaId : null;
-        const personaLabel = typeof persona.personaLabel === 'string'
-            ? persona.personaLabel
-            : (personaId ? formatPersonaName(personaId) : '');
+        let personaLabel;
+        if (typeof persona.personaLabel === 'string') {
+            personaLabel = persona.personaLabel;
+        } else if (personaId) {
+            personaLabel = formatPersonaName(personaId);
+        } else {
+            personaLabel = '';
+        }
         const usesDefault = typeof persona.usesDefaultPersona === 'boolean' ? persona.usesDefaultPersona : null;
         const updatedAt = Number.isFinite(persona.updatedAt) ? persona.updatedAt : null;
 
@@ -1897,7 +1912,13 @@ class BotController {
             if (chat.type) {
                 const typeEl = document.createElement('span');
                 typeEl.className = 'chat-list-type';
-                typeEl.textContent = chat.type === 'private' ? 'Direct' : chat.type === 'group' ? 'Group' : 'Channel';
+                if (chat.type === 'private') {
+                    typeEl.textContent = 'Direct';
+                } else if (chat.type === 'group') {
+                    typeEl.textContent = 'Group';
+                } else {
+                    typeEl.textContent = 'Channel';
+                }
                 metaEl.appendChild(typeEl);
             }
 

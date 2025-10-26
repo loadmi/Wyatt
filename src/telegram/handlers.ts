@@ -337,12 +337,16 @@ function findPendingOverrideForMessage(message: any): PendingHumanOverride | und
     );
     if (matches.length === 1) return matches[0];
     if (matches.length > 1) {
-      return matches.sort((a, b) => b.createdAt - a.createdAt)[0];
+      const sortedMatches = [...matches];
+      sortedMatches.sort((a, b) => b.createdAt - a.createdAt);
+      return sortedMatches[0];
     }
   }
 
   if (all.length === 0) return undefined;
-  return all.sort((a, b) => b.createdAt - a.createdAt)[0];
+  const sortedAll = [...all];
+  sortedAll.sort((a, b) => b.createdAt - a.createdAt);
+  return sortedAll[0];
 }
 
 type ParsedHumanResponse =

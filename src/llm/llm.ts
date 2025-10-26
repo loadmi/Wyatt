@@ -165,7 +165,9 @@ function trimMessagesToLimit(
 
   let budget = Math.max(0, limit - countChars(sys));
 
-  const rev = [...others].reverse();
+  const othersCopy = [...others];
+  othersCopy.reverse();
+  const rev = othersCopy;
   const keptRev: ChatMessage[] = [];
   for (const m of rev) {
     const cLen = m?.content?.length || 0;
@@ -180,7 +182,9 @@ function trimMessagesToLimit(
       break;
     }
   }
-  const kept = keptRev.reverse();
+  const keptRevCopy = [...keptRev];
+  keptRevCopy.reverse();
+  const kept = keptRevCopy;
   return [...sys, ...kept];
 }
 
