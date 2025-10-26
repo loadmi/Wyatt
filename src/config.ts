@@ -66,6 +66,10 @@ const config = {
   openrouterApiKey: "",
   telegramAccounts: [] as TelegramAccount[],
   activeAccountId: null as string | null,
+  // Wake-up escalation configuration
+  wakeUpEscalationChatId: "",
+  wakeUpEscalationLabel: "",
+  wakeUpSuggestionCount: 3,
 };
 
 export const appConfig = () => config;
@@ -128,6 +132,9 @@ function persistConfig(): void {
       systemPrompt: (config as any).systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,
+      wakeUpEscalationChatId: (config as any).wakeUpEscalationChatId,
+      wakeUpEscalationLabel: (config as any).wakeUpEscalationLabel,
+      wakeUpSuggestionCount: (config as any).wakeUpSuggestionCount,
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -173,6 +180,26 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
+
+  if (Object.prototype.hasOwnProperty.call(rest, "wakeUpEscalationChatId")) {
+    const raw = (rest as any).wakeUpEscalationChatId;
+    (rest as any).wakeUpEscalationChatId = typeof raw === "string" ? raw.trim() : raw != null ? String(raw).trim() : "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(rest, "wakeUpEscalationLabel")) {
+    const raw = (rest as any).wakeUpEscalationLabel;
+    (rest as any).wakeUpEscalationLabel = typeof raw === "string" ? raw.trim() : raw != null ? String(raw).trim() : "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(rest, "wakeUpSuggestionCount")) {
+    const numeric = Number((rest as any).wakeUpSuggestionCount);
+    if (Number.isFinite(numeric)) {
+      const clamped = Math.min(6, Math.max(1, Math.trunc(numeric)));
+      (rest as any).wakeUpSuggestionCount = clamped;
+    } else {
+      delete (rest as any).wakeUpSuggestionCount;
+    }
+  }
   Object.assign(config, rest);
 
   persistConfig();

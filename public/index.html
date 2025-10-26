@@ -1524,7 +1524,7 @@
                 hidden>
                 <div class="panel-card">
                     <h2 class="panel-title">Persona &amp; LLM Settings</h2>
-                    <div class="config-grid"> 
+                    <div class="config-grid">
                         <div class="form-field">
                             <label for="personaSelect">New Interaction Personality</label>
                             <select id="personaSelect" class="persona-select">
@@ -1543,17 +1543,40 @@
                             <select id="openrouterModelSelect" class="model-select">
                                 <option value="">Loading models...</option>
                             </select>
-                        </div> 
-                    </div> 
-                        <div class="form-field" id="openrouterKeyRow" style="display:none"> 
-                        <label for="openrouterApiKeyInput">OpenRouter API Key</label> 
-                        <div class="inline-actions"> 
-                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off"> 
-                            <button type="button" id="openrouterApiKeySave">Save</button> 
-                            <button type="button" id="openrouterApiKeyClear">Clear</button> 
-                            <small id="openrouterKeyStatus" aria-live="polite"></small> 
-                        </div> 
-                    </div> 
+                        </div>
+                    </div>
+                        <div class="form-field" id="openrouterKeyRow" style="display:none">
+                        <label for="openrouterApiKeyInput">OpenRouter API Key</label>
+                        <div class="inline-actions">
+                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off">
+                            <button type="button" id="openrouterApiKeySave">Save</button>
+                            <button type="button" id="openrouterApiKeyClear">Clear</button>
+                            <small id="openrouterKeyStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-card">
+                    <h2 class="panel-title">Wake-up Escalation</h2>
+                    <p class="panel-subtext">When a dormant chat pings the bot, forward the message to a reviewer before the bot replies.</p>
+                    <form id="wakeupForm" class="account-form" novalidate>
+                        <div class="form-field">
+                            <label for="wakeupChatId">Reviewer Telegram handle or ID</label>
+                            <input type="text" id="wakeupChatId" placeholder="@username or numeric ID" autocomplete="off">
+                        </div>
+                        <div class="form-field">
+                            <label for="wakeupLabel">Display name (optional)</label>
+                            <input type="text" id="wakeupLabel" placeholder="e.g. Supervisor" autocomplete="off">
+                        </div>
+                        <div class="form-field">
+                            <label for="wakeupSuggestionCount">Suggested replies</label>
+                            <input type="number" id="wakeupSuggestionCount" min="1" max="6" step="1" value="3">
+                            <small class="form-hint">Number of quick-reply buttons shown to the reviewer.</small>
+                        </div>
+                        <div class="account-form-actions">
+                            <button type="submit" id="wakeupSaveBtn">Save escalation settings</button>
+                        </div>
+                        <small id="wakeupStatus" class="panel-subtext" role="status" aria-live="polite" hidden></small>
+                    </form>
                 </div>
                 <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>

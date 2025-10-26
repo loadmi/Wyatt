@@ -264,6 +264,62 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
   return generateBlendMessage(samples, { mode: "group" });
 }
 
+export async function getResponseSuggestions(
+  messages: ChatMessage[],
+  options?: { count?: number },
+): Promise<string[]> {
+  const requested = Number(options?.count ?? 3);
+  const count = Number.isFinite(requested) ? Math.min(6, Math.max(1, Math.trunc(requested))) : 3;
+  const contextTail = messages.slice(-16);
+  const systemPrompt = [
+    "You help a scam-baiting Telegram persona draft possible replies.",
+    "Generate natural, playful responses that stay in character and avoid sounding like an automated script.",
+    "Focus on keeping the conversation going without confirming sensitive information or giving money.",
+    "Each reply must stand alone and should not reference being an AI or the drafting process.",
+  ].join(" ");
+  const instruction = [
+    `Provide ${count} distinct Telegram replies that could continue the conversation naturally.`,
+    "Each reply must fit within 200 characters and avoid emojis more than twice per line.",
+    "Output format: one reply per line, each line starting with a hyphen and a space (e.g. '- sure thing…').",
+    "No numbering, explanations, or extra text before or after the list.",
+  ].join(" ");
+
+  const prompt: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    ...contextTail,
+    { role: "user", content: instruction },
+  ];
+
+  let raw = "";
+  try {
+    raw = await requestLLMCompletion(prompt, { fallback: "" });
+  } catch (error) {
+    console.warn("[LLM] Failed to generate suggestion list:", (error as any)?.message || error);
+  }
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/^[-•]+\s*/, "").trim())
+    .filter((line) => line.length > 0);
+
+  const unique: string[] = [];
+  for (const suggestion of lines) {
+    const normalised = suggestion.toLowerCase();
+    if (!unique.some((existing) => existing.toLowerCase() === normalised)) {
+      unique.push(suggestion);
+    }
+  }
+
+  const trimmed = unique.slice(0, count).map((text) => {
+    if (text.length <= 240) return text;
+    return text.slice(0, 237).trimEnd() + "…";
+  });
+
+  return trimmed;
+}
+
 export async function getResponse(messages: ChatMessage[]): Promise<string> {
   const { maxInput, maxSystem } = getInputLimits();
   const FALLBACKS = [

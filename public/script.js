@@ -123,6 +123,11 @@ class BotController {
         this.accountFormTitle = document.getElementById('accountFormTitle');
         this.accountNotice = document.getElementById('accountNotice');
         this.accountIdInput = document.getElementById('accountId');
+        this.wakeupForm = document.getElementById('wakeupForm');
+        this.wakeupChatIdInput = document.getElementById('wakeupChatId');
+        this.wakeupLabelInput = document.getElementById('wakeupLabel');
+        this.wakeupSuggestionInput = document.getElementById('wakeupSuggestionCount');
+        this.wakeupStatus = document.getElementById('wakeupStatus');
 
         if (this.openrouterApiKeySave) {
             this.openrouterApiKeySave.addEventListener('click', () => this.saveOpenrouterKey());
@@ -207,6 +212,12 @@ class BotController {
         }
         if (this.accountCancelBtn) {
             this.accountCancelBtn.addEventListener('click', () => this.resetAccountForm());
+        }
+        if (this.wakeupForm) {
+            this.wakeupForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.saveWakeUpConfig();
+            });
         }
         if (this.chatRefreshBtn) {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
@@ -295,6 +306,9 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        // Load wake-up escalation configuration
+        this.loadWakeUpConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -503,6 +517,78 @@ class BotController {
             this.log('LLM config loaded');
         } catch (error) {
             this.log('❌ Error loading LLM config: ' + error.message);
+        }
+    }
+
+    updateWakeUpStatus(message, tone = 'info') {
+        if (!this.wakeupStatus) return;
+        this.wakeupStatus.textContent = message || '';
+        if (!message) {
+            this.wakeupStatus.hidden = true;
+            this.wakeupStatus.removeAttribute('data-tone');
+            return;
+        }
+        this.wakeupStatus.hidden = false;
+        this.wakeupStatus.dataset.tone = tone;
+    }
+
+    async loadWakeUpConfig() {
+        if (!this.wakeupChatIdInput || !this.wakeupSuggestionInput) {
+            return;
+        }
+        try {
+            const response = await fetch('/api/config/wakeup');
+            if (!response.ok) {
+                throw new Error('Failed to load wake-up settings');
+            }
+            const data = await response.json();
+            this.wakeupChatIdInput.value = data.chatId || '';
+            if (this.wakeupLabelInput) {
+                this.wakeupLabelInput.value = data.label || '';
+            }
+            const suggestionCount = Number(data.suggestionCount);
+            this.wakeupSuggestionInput.value = Number.isFinite(suggestionCount)
+                ? String(suggestionCount)
+                : '3';
+            this.updateWakeUpStatus('', 'info');
+        } catch (error) {
+            console.error('Failed to load wake-up configuration:', error);
+            this.updateWakeUpStatus('Unable to load wake-up escalation settings.', 'error');
+        }
+    }
+
+    async saveWakeUpConfig() {
+        if (!this.wakeupChatIdInput || !this.wakeupSuggestionInput) {
+            return;
+        }
+        const chatId = this.wakeupChatIdInput.value.trim();
+        const label = this.wakeupLabelInput ? this.wakeupLabelInput.value.trim() : '';
+        const suggestionCount = Number(this.wakeupSuggestionInput.value);
+        this.updateWakeUpStatus('Saving…', 'info');
+        try {
+            const response = await fetch('/api/config/wakeup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ chatId, label, suggestionCount })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                const message = data && data.message ? data.message : 'Failed to save wake-up settings.';
+                throw new Error(message);
+            }
+            this.wakeupChatIdInput.value = data.chatId || '';
+            if (this.wakeupLabelInput) {
+                this.wakeupLabelInput.value = data.label || '';
+            }
+            const savedCount = Number(data.suggestionCount);
+            if (Number.isFinite(savedCount)) {
+                this.wakeupSuggestionInput.value = String(savedCount);
+            }
+            this.updateWakeUpStatus('Wake-up escalation settings saved.', 'success');
+        } catch (error) {
+            this.updateWakeUpStatus(error.message || 'Failed to save wake-up settings.', 'error');
         }
     }
 

@@ -142,6 +142,21 @@ export function startWebServer(): void {
         updates.activeAccountId = persisted.activeAccountId ?? null;
       }
 
+      if (typeof (persisted as any).wakeUpEscalationChatId === "string") {
+        updates.wakeUpEscalationChatId = (persisted as any).wakeUpEscalationChatId;
+      }
+
+      if (typeof (persisted as any).wakeUpEscalationLabel === "string") {
+        updates.wakeUpEscalationLabel = (persisted as any).wakeUpEscalationLabel;
+      }
+
+      if (typeof (persisted as any).wakeUpSuggestionCount === "number") {
+        const numeric = Number((persisted as any).wakeUpSuggestionCount);
+        if (Number.isFinite(numeric)) {
+          updates.wakeUpSuggestionCount = Math.min(6, Math.max(1, Math.trunc(numeric)));
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         setConfig(updates as Partial<ReturnType<typeof appConfig>>);
       }
@@ -347,6 +362,57 @@ export function startWebServer(): void {
       currentPersona: persona,
     } as Partial<ReturnType<typeof appConfig>>);
     res.status(201).json({ success: true, persona });
+  });
+
+  app.get("/api/config/wakeup", (req: Request, res: Response) => {
+    const cfg = appConfig() as any;
+    const suggestionCount = Number.isFinite(cfg.wakeUpSuggestionCount)
+      ? Math.min(6, Math.max(1, Math.trunc(cfg.wakeUpSuggestionCount)))
+      : 3;
+    res.json({
+      chatId: (cfg.wakeUpEscalationChatId || "").trim(),
+      label: (cfg.wakeUpEscalationLabel || "").trim(),
+      suggestionCount,
+    });
+  });
+
+  app.post("/api/config/wakeup", (req: Request, res: Response) => {
+    const { chatId, label, suggestionCount } = req.body || {};
+    const updates: Record<string, unknown> = {};
+
+    if (chatId !== undefined) {
+      updates.wakeUpEscalationChatId =
+        typeof chatId === "string" ? chatId : chatId != null ? String(chatId) : "";
+    }
+
+    if (label !== undefined) {
+      updates.wakeUpEscalationLabel =
+        typeof label === "string" ? label : label != null ? String(label) : "";
+    }
+
+    if (suggestionCount !== undefined) {
+      const numeric = Number(suggestionCount);
+      if (Number.isFinite(numeric)) {
+        updates.wakeUpSuggestionCount = Math.min(6, Math.max(1, Math.trunc(numeric)));
+      }
+    }
+
+    try {
+      setConfig(updates as Partial<ReturnType<typeof appConfig>>);
+      const cfg = appConfig() as any;
+      const suggestionCountFinal = Number.isFinite(cfg.wakeUpSuggestionCount)
+        ? Math.min(6, Math.max(1, Math.trunc(cfg.wakeUpSuggestionCount)))
+        : 3;
+      res.status(201).json({
+        success: true,
+        chatId: (cfg.wakeUpEscalationChatId || "").trim(),
+        label: (cfg.wakeUpEscalationLabel || "").trim(),
+        suggestionCount: suggestionCountFinal,
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update wake-up settings.";
+      res.status(400).json({ success: false, message });
+    }
   });
 
   app.get("/api/config/accounts", (req: Request, res: Response) => {

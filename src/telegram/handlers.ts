@@ -1,11 +1,13 @@
 // src/telegram/handlers.ts
 import { NewMessage, NewMessageEvent } from "telegram/events";
+import { CallbackQueryEvent } from "telegram/events/CallbackQuery";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
-import { getResponse } from "../llm/llm";
+import { getResponse, getResponseSuggestions } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
+import type { ChatMessage } from "../llm/llm";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -21,6 +23,27 @@ const historyCache = new Map<string, ContextEntry[]>();
 // Cached self info to detect mentions/replies in group chats
 let selfUsernameCached: string | null = null;
 let selfIdStringCached: string | null = null;
+
+type WakeUpEscalationResult = {
+  selected: string | null;
+  timedOut: boolean;
+  selectionIndex?: number;
+};
+
+type PendingEscalationRecord = {
+  id: string;
+  suggestions: string[];
+  resolve: (result: WakeUpEscalationResult) => void;
+  timeout: NodeJS.Timeout | null;
+  resolved: boolean;
+  requestText: string;
+  manualPeer: any;
+  manualMessageId?: number;
+  client: any;
+};
+
+const pendingEscalations = new Map<string, PendingEscalationRecord>();
+const manualPeerCache = new Map<string, any>();
 
 // Wake up routine: track last interaction time per user/chat
 type InteractionRecord = {
@@ -242,6 +265,40 @@ export function convertContextToLLM(context: ContextEntry[], systemPrompt?: stri
   return mapped;
 }
 
+function mapToChatMessages(entries: LLMContextEntry[]): ChatMessage[] {
+  return entries.map((entry) => ({ role: entry.role, content: entry.content }));
+}
+
+async function resolveReviewerPeer(client: any, identifier: string): Promise<any | null> {
+  if (!identifier) return null;
+  if (manualPeerCache.has(identifier)) {
+    return manualPeerCache.get(identifier);
+  }
+  try {
+    const peer = await client.getInputEntity(identifier);
+    manualPeerCache.set(identifier, peer);
+    return peer;
+  } catch (error) {
+    console.warn("Wake-up escalation: failed to resolve reviewer chat:", (error as any)?.message || error);
+    return null;
+  }
+}
+
+function describeSenderName(message: any, fallback: string): string {
+  try {
+    const sender = (message as any)?.sender;
+    const pieces: string[] = [];
+    if (sender) {
+      if (typeof sender.firstName === "string" && sender.firstName.trim()) pieces.push(sender.firstName.trim());
+      if (typeof sender.lastName === "string" && sender.lastName.trim()) pieces.push(sender.lastName.trim());
+      if (pieces.length === 0 && typeof sender.username === "string" && sender.username.trim()) return sender.username.trim();
+      if (pieces.length === 0 && typeof sender.title === "string" && sender.title.trim()) return sender.title.trim();
+      if (pieces.length > 0) return pieces.join(" ");
+    }
+  } catch { }
+  return fallback;
+}
+
 async function resolveInputPeerSafe(client: any, message: any): Promise<any | undefined> {
   try {
     const byMessage = await message.getInputChat?.();
@@ -256,6 +313,148 @@ async function resolveInputPeerSafe(client: any, message: any): Promise<any | un
     if (uid) return await client.getInputEntity(uid);
   } catch { }
   return undefined;
+}
+
+async function maybeHandleWakeUpEscalation(params: {
+  client: any;
+  message: any;
+  senderIdString: string;
+  chatId?: string;
+  llmContext: LLMContextEntry[];
+  delayMs: number;
+  incomingText: string;
+}): Promise<WakeUpEscalationResult> {
+  const { client, message, senderIdString, chatId, llmContext, delayMs, incomingText } = params;
+  const config = appConfig() as any;
+  const reviewerId = typeof config.wakeUpEscalationChatId === "string" ? config.wakeUpEscalationChatId.trim() : "";
+  const reviewerLabel = typeof config.wakeUpEscalationLabel === "string" ? config.wakeUpEscalationLabel.trim() : "";
+  const suggestionCountRaw = Number(config.wakeUpSuggestionCount);
+  const suggestionCount = Number.isFinite(suggestionCountRaw)
+    ? Math.min(6, Math.max(1, Math.trunc(suggestionCountRaw)))
+    : 3;
+
+  if (!reviewerId) {
+    if (delayMs > 0) await sleep(delayMs);
+    return { selected: null, timedOut: true };
+  }
+
+  const manualPeer = await resolveReviewerPeer(client, reviewerId);
+  if (!manualPeer) {
+    if (delayMs > 0) await sleep(delayMs);
+    return { selected: null, timedOut: true };
+  }
+
+  let suggestions: string[] = [];
+  try {
+    const chatMessages: ChatMessage[] = mapToChatMessages(llmContext);
+    suggestions = await getResponseSuggestions(chatMessages, { count: suggestionCount });
+  } catch (error) {
+    console.warn("Wake-up escalation: suggestion generation failed:", (error as any)?.message || error);
+  }
+
+  if (suggestions.length === 0) {
+    try {
+      const fallback = await getResponse(llmContext);
+      if (fallback && fallback.trim()) {
+        suggestions = [fallback.trim()];
+      }
+    } catch (error) {
+      console.warn("Wake-up escalation: fallback reply generation failed:", (error as any)?.message || error);
+    }
+  }
+
+  if (suggestions.length === 0) {
+    suggestions = ["Let me shake off the cobwebs and get right back to you! 😊"];
+  }
+
+  const requestId = `wake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const senderLabel = describeSenderName(message, senderIdString);
+  const preview = (incomingText || "").trim();
+  const truncatedMessage = preview.length > 900 ? `${preview.slice(0, 897)}…` : preview || "(no text content)";
+  const seconds = Math.max(1, Math.round(delayMs / 1000));
+  const header = reviewerLabel
+    ? `Hey ${reviewerLabel}, the bot just got pinged after a long nap.`
+    : "Wake-up alert: the bot just got pinged after a long nap.";
+  const bodyLines = [
+    header,
+    `From: ${senderLabel} (${senderIdString})`,
+    chatId ? `Chat key: ${chatId}` : null,
+    "",
+    "Message received:",
+    truncatedMessage,
+    "",
+    "Suggested replies:",
+    ...suggestions.map((text, idx) => `${idx + 1}. ${text}`),
+    "",
+    `Tap a button below to send one. The bot will respond automatically in ~${seconds}s if no option is chosen.`,
+  ].filter((line): line is string => line !== null);
+  const requestText = bodyLines.join("\n");
+
+  const buttons = suggestions.map((_, idx) => [
+    new Api.KeyboardButtonCallback({
+      text: `Send option ${idx + 1}`,
+      data: Buffer.from(JSON.stringify({ t: "wake", id: requestId, idx }), "utf8"),
+    }),
+  ]);
+  buttons.push([
+    new Api.KeyboardButtonCallback({
+      text: "Let bot reply",
+      data: Buffer.from(JSON.stringify({ t: "wake", id: requestId, idx: -1 }), "utf8"),
+    }),
+  ]);
+
+  let manualMessage: any;
+  try {
+    manualMessage = await client.sendMessage(manualPeer, {
+      message: requestText,
+      buttons,
+    });
+    console.log(`Forwarded wake-up alert to reviewer ${reviewerId} for ${senderIdString}.`);
+  } catch (error) {
+    console.warn("Wake-up escalation: failed to notify reviewer:", (error as any)?.message || error);
+    if (delayMs > 0) await sleep(delayMs);
+    return { selected: null, timedOut: true };
+  }
+
+  return await new Promise<WakeUpEscalationResult>((resolvePromise) => {
+    const record: PendingEscalationRecord = {
+      id: requestId,
+      suggestions,
+      resolve: () => { },
+      timeout: null,
+      resolved: false,
+      requestText,
+      manualPeer,
+      manualMessageId: manualMessage?.id,
+      client,
+    };
+
+    record.resolve = (result: WakeUpEscalationResult) => {
+      if (record.resolved) return;
+      record.resolved = true;
+      if (record.timeout) clearTimeout(record.timeout);
+      pendingEscalations.delete(requestId);
+      resolvePromise(result);
+    };
+
+    record.timeout = setTimeout(async () => {
+      if (record.resolved) return;
+      record.resolved = true;
+      pendingEscalations.delete(requestId);
+      if (record.manualMessageId) {
+        try {
+          await client.editMessage(manualPeer, {
+            message: record.manualMessageId,
+            text: `${requestText}\n\n⌛ Bot replied automatically.`,
+            buttons: [],
+          });
+        } catch { }
+      }
+      resolvePromise({ selected: null, timedOut: true });
+    }, Math.max(0, delayMs));
+
+    pendingEscalations.set(requestId, record);
+  });
 }
 
 // Fetches the full text message history with a peer (oldest -> newest order).
@@ -358,6 +557,144 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
   return cached;
 }
 
+type DeliverReplyParams = {
+  replyText: string;
+  client: any;
+  message: any;
+  inputPeer: any;
+  senderIdString: string;
+  composeStartedAt: number;
+  chatId?: string;
+  personaRecord?: any;
+  useDelays: boolean;
+  manualOverride?: boolean;
+  manualSelectionIndex?: number;
+};
+
+async function deliverReply({
+  replyText,
+  client,
+  message,
+  inputPeer,
+  senderIdString,
+  composeStartedAt,
+  chatId,
+  personaRecord,
+  useDelays,
+  manualOverride,
+  manualSelectionIndex,
+}: DeliverReplyParams): Promise<void> {
+  const isGroupContext = isPeerChatOrChannel(message?.peerId);
+  const waitBefore = useDelays
+    ? randomInRange(appConfig().waitBeforeTypingMs.min, appConfig().waitBeforeTypingMs.max)
+    : 0;
+  const typingDuration = useDelays
+    ? randomInRange(appConfig().typingDurationMs.min, appConfig().typingDurationMs.max)
+    : 0;
+
+  try {
+    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
+    const maxId = (message as any)?.id || 0;
+    if (peer && maxId) {
+      await (client as any)
+        .invoke(
+          new Api.messages.ReadHistory({
+            peer,
+            maxId,
+          })
+        )
+        .catch(() => { });
+    }
+  } catch (error) {
+    console.warn("Failed to mark message as read:", (error as any)?.message || error);
+  }
+
+  if (waitBefore > 0) {
+    await sleep(waitBefore);
+  }
+
+  let stopTyping: () => void = () => { };
+  if (useDelays && typingDuration > 0) {
+    const startTyping = () => {
+      const peer = inputPeer || message.peerId;
+      const sendTyping = () =>
+        (client as any)
+          .invoke(
+            new Api.messages.SetTyping({
+              peer,
+              action: new Api.SendMessageTypingAction(),
+            })
+          )
+          .catch(() => { });
+      sendTyping();
+      const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
+      return () => {
+        clearInterval(interval);
+        (client as any)
+          .invoke(
+            new Api.messages.SetTyping({
+              peer,
+              action: new Api.SendMessageCancelAction(),
+            })
+          )
+          .catch(() => { });
+      };
+    };
+    stopTyping = startTyping();
+    await sleep(typingDuration);
+  }
+
+  let outboundRecorded = false;
+  try {
+    const sendOptions: any = { message: replyText };
+    if (isGroupContext) {
+      sendOptions.replyTo = (message as any).id;
+    }
+    await client.sendMessage(inputPeer || message.peerId, sendOptions);
+    if (!outboundRecorded) {
+      recordOutbound(senderIdString, Date.now() - composeStartedAt);
+      outboundRecorded = true;
+    }
+    const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
+    const prefix = manualOverride ? "Manual override reply" : "Replied";
+    const optionNote = manualOverride && typeof manualSelectionIndex === "number"
+      ? ` (option ${manualSelectionIndex + 1})`
+      : "";
+    console.log(`${prefix}${optionNote} to ${senderIdString} using ${personaLabel}: "${replyText}"`);
+    updateLastInteraction(senderIdString, chatId);
+  } catch (error) {
+    console.error("Failed to send message:", error);
+    try {
+      const sendParams: any = {
+        peer: inputPeer || message.peerId,
+        message: replyText,
+        randomId: bigInt(Math.floor(Math.random() * 1e16)),
+      };
+      if (isGroupContext) {
+        sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
+      }
+      await client.invoke(new Api.messages.SendMessage(sendParams));
+      if (!outboundRecorded) {
+        recordOutbound(senderIdString, Date.now() - composeStartedAt);
+        outboundRecorded = true;
+      }
+      const personaLabel = formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId());
+      const prefix = manualOverride ? "Manual override reply" : "Replied";
+      const optionNote = manualOverride && typeof manualSelectionIndex === "number"
+        ? ` (option ${manualSelectionIndex + 1})`
+        : "";
+      console.log(`${prefix}${optionNote} via API to ${senderIdString} using ${personaLabel}: "${replyText}"`);
+      updateLastInteraction(senderIdString, chatId);
+    } catch (apiError) {
+      console.error("API fallback also failed:", apiError);
+    }
+  } finally {
+    try {
+      stopTyping();
+    } catch { }
+  }
+}
+
 export async function messageHandler(event: NewMessageEvent): Promise<void> {
   const message = event.message;
   const client = (event as any)._client;
@@ -408,13 +745,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
   const conversationKey = chatId ?? peerKey ?? senderIdString;
   const needsWakeUp = shouldWakeUp(senderIdString, chatId);
 
-  if (needsWakeUp) {
-    const wakeUpDelay = getWakeUpDelay();
-    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay/1000)}s delay)...`);
-    await sleep(wakeUpDelay);
-    console.log(`✅ Bot awake and ready to respond`);
-  }
-
   // Resolve input peer early since we need it for history lookups
   let inputPeer: any = undefined;
   inputPeer = await resolveInputPeerSafe(client, message);
@@ -452,118 +782,109 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
 
   const composeStartedAt = Date.now();
-  const replyText = await getResponse(llmContext) || "Ttyl xoxo";
 
-  // inputPeer already resolved above; if not available, we still try to proceed
-
-  // Centralized typing indicator control
-  const startTyping = () => {
-    const peer = inputPeer || message.peerId;
-    const sendTyping = () =>
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageTypingAction(),
-          })
-        )
-        .catch(() => { });
-
-    // Fire immediately, then keep alive per config
-    sendTyping();
-    const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
-
-    return () => {
-      clearInterval(interval);
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageCancelAction(),
-          })
-        )
-        .catch(() => { });
-    };
-  };
-
-  // Phase 1: silent wait before typing
-  const waitBefore = randomInRange(
-    appConfig().waitBeforeTypingMs.min,
-    appConfig().waitBeforeTypingMs.max
-  );
-  // Mark the incoming message as read right before starting the wait timer
-  try {
-    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
-    const maxId = (message as any)?.id || 0;
-    if (peer && maxId) {
-      await (client as any)
-        .invoke(
-          new Api.messages.ReadHistory({
-            peer,
-            maxId,
-          })
-        )
-        .catch(() => { });
-    }
-  } catch (e) {
-    console.warn("Failed to mark message as read:", (e as any)?.message || e);
-  }
-  await sleep(waitBefore);
-
-  // Phase 2: show typing for configured duration
-  const typingFor = randomInRange(
-    appConfig().typingDurationMs.min,
-    appConfig().typingDurationMs.max
-  );
-  const stopTyping = startTyping();
-  await sleep(typingFor);
-
-  // Phase 3: send reply and stop typing
-  let outboundRecorded = false;
-  try {
-    const isGroupContext = isPeerChatOrChannel(message?.peerId);
-    const sendOptions: any = { message: replyText };
-    if (isGroupContext) {
-      sendOptions.replyTo = (message as any).id;
-    }
-    await client.sendMessage(inputPeer || message.peerId, sendOptions);
-
-    if (!outboundRecorded) {
-      recordOutbound(senderIdString, Date.now() - composeStartedAt);
-      outboundRecorded = true;
-    }
-    console.log(`Replied to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
-
-    // Update last interaction time after successful response
-    updateLastInteraction(senderIdString, chatId);
-  } catch (error) {
-    console.error("Failed to send message:", error);
-
-    // Fallback: try using the API directly
+  if (needsWakeUp) {
+    const wakeUpDelay = getWakeUpDelay();
+    console.log(`🤖 Bot waking up after inactivity (${Math.round(wakeUpDelay / 1000)}s delay)...`);
     try {
-      const isGroupContext = isPeerChatOrChannel(message?.peerId);
-      const sendParams: any = {
-        peer: inputPeer || message.peerId,
-        message: replyText,
-        randomId: bigInt(Math.floor(Math.random() * 1e16)),
-      };
-      if (isGroupContext) {
-        sendParams.replyTo = new Api.InputReplyToMessage({ replyToMsgId: (message as any).id });
+      const escalationResult = await maybeHandleWakeUpEscalation({
+        client,
+        message,
+        senderIdString,
+        chatId,
+        llmContext,
+        delayMs: wakeUpDelay,
+        incomingText: messageText,
+      });
+      if (escalationResult.selected) {
+        await deliverReply({
+          replyText: escalationResult.selected,
+          client,
+          message,
+          inputPeer,
+          senderIdString,
+          composeStartedAt,
+          chatId,
+          personaRecord,
+          useDelays: false,
+          manualOverride: true,
+          manualSelectionIndex: escalationResult.selectionIndex,
+        });
+        return;
       }
-      await client.invoke(new Api.messages.SendMessage(sendParams));
-      if (!outboundRecorded) {
-        recordOutbound(senderIdString, Date.now() - composeStartedAt);
-        outboundRecorded = true;
+      if (escalationResult.timedOut) {
+        console.log(`✅ Bot awake and ready to respond`);
+      } else {
+        console.log(`Reviewer opted to let the bot reply automatically.`);
       }
-      console.log(`Replied via API to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
-
-      // Update last interaction time after successful response
-      updateLastInteraction(senderIdString, chatId);
-    } catch (apiError) {
-      console.error("API fallback also failed:", apiError);
+    } catch (error) {
+      console.warn("Wake-up escalation failed, continuing with automated reply:", (error as any)?.message || error);
+      if (wakeUpDelay > 0) {
+        await sleep(wakeUpDelay);
+      }
+      console.log(`✅ Bot awake and ready to respond`);
     }
-  } finally {
-    stopTyping();
   }
+
+  const replyText = (await getResponse(llmContext)) || "Ttyl xoxo";
+
+  await deliverReply({
+    replyText,
+    client,
+    message,
+    inputPeer,
+    senderIdString,
+    composeStartedAt,
+    chatId,
+    personaRecord,
+    useDelays: true,
+  });
   // TODO: Add logic to delete or end chat in some cases
+}
+
+export async function callbackQueryHandler(event: CallbackQueryEvent): Promise<void> {
+  const dataRaw = event.data;
+  if (!dataRaw) return;
+
+  let payload: any;
+  try {
+    payload = JSON.parse(dataRaw.toString());
+  } catch {
+    return;
+  }
+
+  if (!payload || payload.t !== "wake" || typeof payload.id !== "string") {
+    return;
+  }
+
+  const record = pendingEscalations.get(payload.id);
+  if (!record) {
+    try { await event.answer({ message: "Request already handled.", cacheTime: 0 }); } catch { }
+    return;
+  }
+
+  const selectionIndex = typeof payload.idx === "number" ? payload.idx : -1;
+
+  if (selectionIndex >= 0 && selectionIndex < record.suggestions.length) {
+    const replyText = record.suggestions[selectionIndex];
+    record.resolve({ selected: replyText, timedOut: false, selectionIndex });
+    try { await event.answer({ message: "Sending selected reply…", cacheTime: 0 }); } catch { }
+    try {
+      await event.edit({
+        message: record.manualMessageId ?? event.messageId,
+        text: `${record.requestText}\n\n✅ Sent option ${selectionIndex + 1}.`,
+        buttons: [],
+      });
+    } catch { }
+  } else {
+    record.resolve({ selected: null, timedOut: false });
+    try { await event.answer({ message: "Letting the bot reply automatically.", cacheTime: 0 }); } catch { }
+    try {
+      await event.edit({
+        message: record.manualMessageId ?? event.messageId,
+        text: `${record.requestText}\n\n⏭️ Letting the bot reply automatically.`,
+        buttons: [],
+      });
+    } catch { }
+  }
 }
