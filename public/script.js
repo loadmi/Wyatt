@@ -396,17 +396,14 @@ class BotController {
 
     _initializeCharts() {
         try {
-            if (typeof globalThis.window !== 'undefined' && globalThis.window.Chart) {
+            if (globalThis.window !== undefined && globalThis.window.Chart) {
                 this.setupMetricsDashboard();
             } else {
                 this.log('Charts not available (skipping graph init)');
             }
         } catch (error) {
-            try {
-                this.log('Charts init failed, continuing without graphs');
-            } catch (logError) {
-                console.error('Chart initialization and logging both failed:', error);
-            }
+            this.log('Charts init failed, continuing without graphs');
+            console.error('Chart initialization failed:', error);
         }
     }
 
@@ -1302,7 +1299,7 @@ class BotController {
 
         if (this.accountIdInput) this.accountIdInput.value = account.id || '';
         if (this.accountLabelInput) this.accountLabelInput.value = account.label || '';
-        if (this.accountApiIdInput) this.accountApiIdInput.value = account.apiId != null ? account.apiId : '';
+        if (this.accountApiIdInput) this.accountApiIdInput.value = account.apiId !== null && account.apiId !== undefined ? account.apiId : '';
         if (this.accountApiHashInput) this.accountApiHashInput.value = '';
         if (this.accountSessionInput) {
             // Do not expose stored session in UI
@@ -1394,7 +1391,7 @@ class BotController {
             this.log(`✅ ${id ? 'Account updated' : 'Account added'}: ${label}`);
             this.resetAccountForm();
             await this.loadAccounts(false);
-            if (data && Object.prototype.hasOwnProperty.call(data, 'restarted')) {
+            if (data && Object.hasOwn(data, 'restarted')) {
                 if (data.restarted) {
                     this.log('Bot restarted on activation' + (data.restartMessage ? `: ${data.restartMessage}` : ''));
                 } else if (data.restartMessage) {
@@ -1436,7 +1433,7 @@ class BotController {
             return;
         }
         const name = account.label || 'Account';
-        if (typeof globalThis.window !== 'undefined' && !globalThis.window.confirm(`Remove account "${name}"?`)) {
+        if (globalThis.window !== undefined && !globalThis.window.confirm(`Remove account "${name}"?`)) {
             return;
         }
         try {
@@ -1830,7 +1827,7 @@ class BotController {
                 if (item.id === chat.id) {
                     const fields = ['personaId', 'personaLabel', 'usesDefaultPersona', 'personaUpdatedAt'];
                     for (const field of fields) {
-                        if (Object.prototype.hasOwnProperty.call(chat, field) && chat[field] !== undefined && chat[field] !== null && item[field] !== chat[field]) {
+                        if (Object.hasOwn(chat, field) && chat[field] !== undefined && chat[field] !== null && item[field] !== chat[field]) {
                             item[field] = chat[field];
                             changed = true;
                         }
@@ -1849,14 +1846,14 @@ class BotController {
             this.chatListData = [];
         }
         const term = (this.chatSearchTerm || '').toLowerCase().trim();
-        if (!term) {
-            this.filteredChats = this.chatListData.slice();
-        } else {
+        if (term) {
             this.filteredChats = this.chatListData.filter(chat => {
                 const personaHint = `${chat.personaLabel || chat.personaId || ''}`;
                 const haystack = `${chat.title || ''} ${chat.lastMessage || ''} ${personaHint}`.toLowerCase();
                 return haystack.includes(term);
             });
+        } else {
+            this.filteredChats = this.chatListData.slice();
         }
         this.renderChatList();
     }
@@ -2008,7 +2005,7 @@ class BotController {
     // Mobile helpers
     isMobile() {
         try {
-            return typeof globalThis.window !== 'undefined' && globalThis.window.matchMedia && globalThis.window.matchMedia('(max-width: 720px)').matches;
+            return globalThis.window !== undefined && globalThis.window.matchMedia && globalThis.window.matchMedia('(max-width: 720px)').matches;
         } catch {
             return false;
         }
@@ -2016,11 +2013,11 @@ class BotController {
 
     toggleMobileSidebar() {
         if (!this.chatPanel) return;
-        const open = !this.chatPanel.classList.contains('mobile-sidebar-open');
+        const open = this.chatPanel.classList.contains('mobile-sidebar-open');
         if (open) {
-            this.openMobileSidebar();
-        } else {
             this.closeMobileSidebar();
+        } else {
+            this.openMobileSidebar();
         }
     }
 
@@ -2226,7 +2223,7 @@ class BotController {
                     title: data.chat.title,
                     type: data.chat.type,
                     lastTimestamp: Array.isArray(data.messages) && data.messages.length > 0
-                        ? data.messages[data.messages.length - 1].timestamp
+                        ? data.messages.at(-1).timestamp
                         : undefined,
                     personaId: data.chat.personaId,
                     personaLabel: data.chat.personaLabel,
@@ -2248,7 +2245,7 @@ class BotController {
 
             const messages = Array.isArray(data.messages) ? data.messages : [];
             const previous = this.chatRenderCache.get(requestedChatId);
-            const latestId = messages.length > 0 ? messages[messages.length - 1].id : null;
+            const latestId = messages.length > 0 ? messages.at(-1).id : null;
             const latestCount = messages.length;
 
             if (!force && previous && previous.lastId === latestId && previous.count === latestCount) {
