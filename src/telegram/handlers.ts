@@ -303,7 +303,7 @@ async function resolveHumanPeer(client: any): Promise<{ input: any; key: string 
   for (const query of queries) {
     try {
       const entity = await client.getInputEntity(query);
-      const key = toIdString(entity) || toIdString((entity as any)?.peer) || toIdString(query) || target;
+      const key = toIdString(entity) || toIdString((entity)?.peer) || toIdString(query) || target;
       cachedHumanPeerKey = key;
       cachedHumanPeerRaw = target;
       return { input: entity, key: key || target };
@@ -320,8 +320,8 @@ async function resolveHumanPeer(client: any): Promise<{ input: any; key: string 
 
 function findPendingOverrideForMessage(message: any): PendingHumanOverride | undefined {
   const replyId =
-    (message as any)?.replyToMsgId ||
-    (message as any)?.replyTo?.replyToMsgId;
+    (message)?.replyToMsgId ||
+    (message)?.replyTo?.replyToMsgId;
 
   const all = Array.from(pendingHumanOverrides.values()).filter((entry) => !entry.resolved);
   if (replyId) {
