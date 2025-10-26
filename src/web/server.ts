@@ -25,6 +25,8 @@ import {
   updateTelegramAccount,
   removeTelegramAccount,
   setActiveTelegramAccount,
+  getManualResponderContact,
+  setManualResponderContact,
 } from "../config";
 import { loadPersistedState } from "../persistence";
 import { availableJsonFiles } from "../llm/personalities";
@@ -140,6 +142,10 @@ export function startWebServer(): void {
 
       if (Object.prototype.hasOwnProperty.call(persisted, "activeAccountId")) {
         updates.activeAccountId = persisted.activeAccountId ?? null;
+      }
+
+      if (typeof (persisted as any).manualResponderContact === "string") {
+        updates.manualResponderContact = (persisted as any).manualResponderContact;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -347,6 +353,28 @@ export function startWebServer(): void {
       currentPersona: persona,
     } as Partial<ReturnType<typeof appConfig>>);
     res.status(201).json({ success: true, persona });
+  });
+
+  app.get("/api/config/manual-responder", (req: Request, res: Response) => {
+    const contact = getManualResponderContact();
+    res.json({ contact });
+  });
+
+  app.post("/api/config/manual-responder", (req: Request, res: Response) => {
+    const { contact } = req.body || {};
+    try {
+      const value =
+        typeof contact === "string"
+          ? contact
+          : contact != null
+            ? String(contact)
+            : "";
+      setManualResponderContact(value);
+      res.json({ success: true, contact: getManualResponderContact() });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to update manual responder contact.";
+      res.status(400).json({ success: false, message });
+    }
   });
 
   app.get("/api/config/accounts", (req: Request, res: Response) => {

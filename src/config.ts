@@ -66,6 +66,7 @@ const config = {
   openrouterApiKey: "",
   telegramAccounts: [] as TelegramAccount[],
   activeAccountId: null as string | null,
+  manualResponderContact: "",
 };
 
 export const appConfig = () => config;
@@ -128,6 +129,7 @@ function persistConfig(): void {
       systemPrompt: (config as any).systemPrompt,
       telegramAccounts: config.telegramAccounts.map(cloneAccount),
       activeAccountId: config.activeAccountId,
+      manualResponderContact: (config as any).manualResponderContact || "",
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);
@@ -170,9 +172,21 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(newConfig, "manualResponderContact")) {
+    const raw = (newConfig as any).manualResponderContact;
+    if (typeof raw === "string") {
+      (config as any).manualResponderContact = raw.trim();
+    } else if (raw === null || raw === undefined) {
+      (config as any).manualResponderContact = "";
+    } else {
+      (config as any).manualResponderContact = String(raw).trim();
+    }
+  }
+
   const rest: Partial<typeof config> = { ...newConfig };
   delete (rest as any).telegramAccounts;
   delete (rest as any).activeAccountId;
+  delete (rest as any).manualResponderContact;
   Object.assign(config, rest);
 
   persistConfig();
@@ -312,4 +326,13 @@ export function setActiveTelegramAccount(id: string): TelegramAccount {
   config.activeAccountId = account.id;
   persistConfig();
   return cloneAccount(account);
+}
+
+export function getManualResponderContact(): string {
+  const raw = (config as any).manualResponderContact;
+  return typeof raw === "string" ? raw : "";
+}
+
+export function setManualResponderContact(contact: string): void {
+  setConfig({ manualResponderContact: contact } as Partial<typeof config>);
 }

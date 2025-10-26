@@ -12,6 +12,7 @@ export type PersistedState = {
    systemPrompt?: string;
    telegramAccounts?: TelegramAccount[];
    activeAccountId?: string | null;
+   manualResponderContact?: string;
    // Track last interaction times per user/chat for wake up functionality
    interactionTracker?: Record<string, { lastInteraction: number; chatId: string }>;
    chatPersonalities?: Record<string, {

@@ -264,6 +264,60 @@ export async function generateSentimentMessage(samples: SentimentSample[]): Prom
   return generateBlendMessage(samples, { mode: "group" });
 }
 
+const SAMPLE_REPLY_FALLBACKS = [
+  "Ha! That's a turn—what do you mean?",
+  "You have my attention now—go on!",
+  "Oh goodness, now I'm curious. Tell me more?",
+  "Well isn't that something! What's next?",
+  "Mercy me, elaborate a bit, dear!",
+];
+
+function parseSampleReplies(raw: string, expected: number): string[] {
+  if (!raw) return [];
+  const lines = raw
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/^\s*[-*\d.\)]+\s*/, "").trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return [];
+  }
+  const unique: string[] = [];
+  for (const line of lines) {
+    if (!unique.includes(line)) {
+      unique.push(line);
+    }
+    if (unique.length >= expected) break;
+  }
+  return unique.slice(0, expected);
+}
+
+export async function generateSampleReplies(
+  context: ChatMessage[],
+  count = 3,
+): Promise<string[]> {
+  const desired = Math.max(1, Math.min(5, Math.trunc(count)));
+  const fallback = SAMPLE_REPLY_FALLBACKS.slice(0, desired);
+  try {
+    const history = context.slice(-10);
+    const prompt =
+      `Suggest ${desired} distinct short replies that keep a playful scam-baiting chat going. ` +
+      "Keep each reply under two sentences, warm, curious, and never mention that you're an AI or assistant. " +
+      "Return each reply on its own line with no numbering, bullets, or quotes.";
+    const messages = [
+      ...history,
+      { role: "user", content: prompt } as ChatMessage,
+    ];
+    const raw = await requestLLMCompletion(messages, {
+      fallback: fallback.join("\n"),
+    });
+    const parsed = parseSampleReplies(raw, desired);
+    return parsed.length > 0 ? parsed : fallback;
+  } catch (error) {
+    console.warn("Failed to generate sample replies:", (error as any)?.message || error);
+    return fallback;
+  }
+}
+
 export async function getResponse(messages: ChatMessage[]): Promise<string> {
   const { maxInput, maxSystem } = getInputLimits();
   const FALLBACKS = [

@@ -1524,7 +1524,7 @@
                 hidden>
                 <div class="panel-card">
                     <h2 class="panel-title">Persona &amp; LLM Settings</h2>
-                    <div class="config-grid"> 
+                    <div class="config-grid">
                         <div class="form-field">
                             <label for="personaSelect">New Interaction Personality</label>
                             <select id="personaSelect" class="persona-select">
@@ -1546,14 +1546,33 @@
                         </div> 
                     </div> 
                         <div class="form-field" id="openrouterKeyRow" style="display:none"> 
-                        <label for="openrouterApiKeyInput">OpenRouter API Key</label> 
-                        <div class="inline-actions"> 
-                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off"> 
-                            <button type="button" id="openrouterApiKeySave">Save</button> 
-                            <button type="button" id="openrouterApiKeyClear">Clear</button> 
-                            <small id="openrouterKeyStatus" aria-live="polite"></small> 
-                        </div> 
-                    </div> 
+                        <label for="openrouterApiKeyInput">OpenRouter API Key</label>
+                        <div class="inline-actions">
+                            <input type="text" id="openrouterApiKeyInput" placeholder="sk-or-..." autocomplete="off">
+                            <button type="button" id="openrouterApiKeySave">Save</button>
+                            <button type="button" id="openrouterApiKeyClear">Clear</button>
+                            <small id="openrouterKeyStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-card">
+                    <h2 class="panel-title">Wake Override Contact</h2>
+                    <p class="panel-subtext">Forward long-dormant conversations to a trusted Telegram account before the bot wakes up.</p>
+                    <div class="config-grid">
+                        <div class="form-field">
+                            <label for="manualResponderInput">Telegram contact or ID</label>
+                            <input type="text" id="manualResponderInput" placeholder="@username or numeric ID" autocomplete="off">
+                            <small class="form-hint">Leave blank to skip manual review.</small>
+                        </div>
+                        <div class="form-field">
+                            <label for="manualResponderSave">Actions</label>
+                            <div class="inline-actions">
+                                <button type="button" id="manualResponderSave">Save</button>
+                                <button type="button" id="manualResponderClear">Clear</button>
+                            </div>
+                            <small id="manualResponderStatus" aria-live="polite"></small>
+                        </div>
+                    </div>
                 </div>
                 <div class="panel-card">
                     <h2 class="panel-title">Telegram Accounts</h2>

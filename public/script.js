@@ -93,6 +93,10 @@ class BotController {
         this.openrouterApiKeySave = document.getElementById('openrouterApiKeySave');
         this.openrouterApiKeyClear = document.getElementById('openrouterApiKeyClear');
         this.openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
+        this.manualResponderInput = document.getElementById('manualResponderInput');
+        this.manualResponderSave = document.getElementById('manualResponderSave');
+        this.manualResponderClear = document.getElementById('manualResponderClear');
+        this.manualResponderStatus = document.getElementById('manualResponderStatus');
         this.metricsTimestamp = document.getElementById('metricsTimestamp');
         this.metricCards = {
             uptime: document.getElementById('metricUptime'),
@@ -132,6 +136,15 @@ class BotController {
             this.openrouterApiKeyClear.addEventListener('click', () => {
                 if (this.openrouterApiKeyInput) this.openrouterApiKeyInput.value = '';
                 this.saveOpenrouterKey();
+            });
+        }
+        if (this.manualResponderSave) {
+            this.manualResponderSave.addEventListener('click', () => this.submitManualResponderContact());
+        }
+        if (this.manualResponderClear) {
+            this.manualResponderClear.addEventListener('click', () => {
+                if (this.manualResponderInput) this.manualResponderInput.value = '';
+                this.submitManualResponderContact();
             });
         }
         this.accountLabelInput = document.getElementById('accountLabel');
@@ -193,6 +206,7 @@ class BotController {
         this.activeChatPersonaUpdatedAt = null;
         this._suppressChatPersonaChange = false;
         this.chatPersonaBusy = false;
+        this.manualResponderStatusTimer = null;
 
         this.startBtn.addEventListener('click', () => this.startBot());
         this.stopBtn.addEventListener('click', () => this.stopBot());
@@ -295,6 +309,9 @@ class BotController {
 
         // Load LLM configuration
         this.loadLLMConfig();
+
+        // Load manual responder configuration
+        this.loadManualResponderConfig();
 
         // Load Telegram accounts
         this.loadAccounts();
@@ -503,6 +520,73 @@ class BotController {
             this.log('LLM config loaded');
         } catch (error) {
             this.log('❌ Error loading LLM config: ' + error.message);
+        }
+    }
+
+    setManualResponderStatus(message = '', tone = 'info') {
+        if (!this.manualResponderStatus) return;
+        this.manualResponderStatus.textContent = message || '';
+        if (this.manualResponderStatusTimer) {
+            clearTimeout(this.manualResponderStatusTimer);
+            this.manualResponderStatusTimer = null;
+        }
+        if (message) {
+            this.manualResponderStatus.dataset.tone = tone;
+            this.manualResponderStatusTimer = setTimeout(() => {
+                if (this.manualResponderStatus) {
+                    this.manualResponderStatus.textContent = '';
+                    delete this.manualResponderStatus.dataset.tone;
+                }
+                this.manualResponderStatusTimer = null;
+            }, 4000);
+        } else if (this.manualResponderStatus.dataset) {
+            delete this.manualResponderStatus.dataset.tone;
+        }
+    }
+
+    async loadManualResponderConfig() {
+        if (!this.manualResponderInput) return;
+        try {
+            const response = await fetch('/api/config/manual-responder');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            const value = data && typeof data.contact === 'string' ? data.contact : '';
+            this.manualResponderInput.value = value;
+            this.setManualResponderStatus('', 'info');
+        } catch (error) {
+            this.log('❌ Error loading wake override contact: ' + error.message);
+            this.setManualResponderStatus('Unable to load contact', 'error');
+        }
+    }
+
+    async submitManualResponderContact() {
+        if (!this.manualResponderInput) return;
+        const contact = this.manualResponderInput.value.trim();
+        try {
+            const response = await fetch('/api/config/manual-responder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data?.success) {
+                throw new Error(data?.message || 'Failed to update wake override contact.');
+            }
+            const saved = typeof data.contact === 'string' ? data.contact : '';
+            this.manualResponderInput.value = saved;
+            if (saved) {
+                this.log(`✅ Wake override contact set to: ${saved}`);
+                this.setManualResponderStatus('Saved', 'success');
+            } else {
+                this.log('✅ Wake override contact cleared');
+                this.setManualResponderStatus('Cleared', 'success');
+            }
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to update wake override contact.';
+            this.log('❌ ' + message);
+            this.setManualResponderStatus(message, 'error');
         }
     }
 
