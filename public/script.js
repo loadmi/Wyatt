@@ -797,8 +797,13 @@ class BotController {
             const modeLabel = mode === 'wake-up' ? 'Wake-Up' : mode === 'always' ? 'Always' : 'Disabled';
             this.log(`✅ Supervisor configuration saved (Mode: ${modeLabel})`);
             
-            // Reload to ensure UI is in sync
+            // Reload to ensure UI is in sync (but preserve the success message)
+            const successMessage = this.supervisorStatus ? this.supervisorStatus.textContent : '';
             await this.loadSupervisorConfig();
+            if (this.supervisorStatus && successMessage) {
+                this.supervisorStatus.textContent = successMessage;
+                this.supervisorStatus.dataset.variant = 'success';
+            }
         } catch (error) {
             if (this.supervisorStatus) {
                 this.supervisorStatus.textContent = 'Failed to save: ' + error.message;
@@ -988,8 +993,13 @@ class BotController {
             
             this.log('✅ Message delays configuration saved');
             
-            // Reload to ensure UI is in sync
+            // Reload to ensure UI is in sync (but preserve the success message)
+            const successMessage = this.messageDelaysStatus ? this.messageDelaysStatus.textContent : '';
             await this.loadMessageDelaysConfig();
+            if (this.messageDelaysStatus && successMessage) {
+                this.messageDelaysStatus.textContent = successMessage;
+                this.messageDelaysStatus.dataset.variant = 'success';
+            }
         } catch (error) {
             if (this.messageDelaysStatus) {
                 this.messageDelaysStatus.textContent = 'Failed to save: ' + error.message;
