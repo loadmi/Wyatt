@@ -476,6 +476,68 @@ async function handleHumanOverrideMessage(message: any, client: any): Promise<bo
   return true;
 }
 
+async function applyReadingDelay(client: any, message: any, inputPeer: any): Promise<void> {
+  const waitBefore = randomInRange(
+    appConfig().waitBeforeTypingMs.min,
+    appConfig().waitBeforeTypingMs.max
+  );
+  
+  // Mark the incoming message as read right before starting the wait timer
+  try {
+    const peer = inputPeer || message.peerId;
+    const maxId = (message as any)?.id || 0;
+    if (peer && maxId) {
+      await (client as any)
+        .invoke(
+          new Api.messages.ReadHistory({
+            peer,
+            maxId,
+          })
+        )
+        .catch(() => { });
+    }
+  } catch (e) {
+    console.warn("Failed to mark message as read:", (e as any)?.message || e);
+  }
+  
+  await sleep(waitBefore);
+}
+
+async function applyTypingDelay(client: any, message: any, inputPeer: any): Promise<void> {
+  const typingFor = randomInRange(
+    appConfig().typingDurationMs.min,
+    appConfig().typingDurationMs.max
+  );
+  
+  const peer = inputPeer || message.peerId;
+  const sendTyping = () =>
+    (client as any)
+      .invoke(
+        new Api.messages.SetTyping({
+          peer,
+          action: new Api.SendMessageTypingAction(),
+        })
+      )
+      .catch(() => { });
+
+  // Fire immediately, then keep alive per config
+  sendTyping();
+  const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
+
+  await sleep(typingFor);
+  
+  // Stop typing
+  clearInterval(interval);
+  (client as any)
+    .invoke(
+      new Api.messages.SetTyping({
+        peer,
+        action: new Api.SendMessageCancelAction(),
+      })
+    )
+    .catch(() => { });
+}
+
 async function sendImmediateReply(params: {
   client: any;
   message: any;
@@ -492,6 +554,12 @@ async function sendImmediateReply(params: {
     console.warn("Manual override produced an empty reply; skipping send.");
     return false;
   }
+
+  // Apply reading delay (marks as read and waits)
+  await applyReadingDelay(client, message, inputPeer);
+  
+  // Apply typing delay (shows typing indicator and waits)
+  await applyTypingDelay(client, message, inputPeer);
 
   let outboundRecorded = false;
   try {
@@ -1002,69 +1070,13 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
 
   // inputPeer already resolved above; if not available, we still try to proceed
 
-  // Centralized typing indicator control
-  const startTyping = () => {
-    const peer = inputPeer || message.peerId;
-    const sendTyping = () =>
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageTypingAction(),
-          })
-        )
-        .catch(() => { });
+  // Phase 1: Apply reading delay (marks as read and waits)
+  await applyReadingDelay(client, message, inputPeer);
 
-    // Fire immediately, then keep alive per config
-    sendTyping();
-    const interval = setInterval(sendTyping, appConfig().typingKeepaliveMs);
+  // Phase 2: Apply typing delay (shows typing indicator and waits)
+  await applyTypingDelay(client, message, inputPeer);
 
-    return () => {
-      clearInterval(interval);
-      (client as any)
-        .invoke(
-          new Api.messages.SetTyping({
-            peer,
-            action: new Api.SendMessageCancelAction(),
-          })
-        )
-        .catch(() => { });
-    };
-  };
-
-  // Phase 1: silent wait before typing
-  const waitBefore = randomInRange(
-    appConfig().waitBeforeTypingMs.min,
-    appConfig().waitBeforeTypingMs.max
-  );
-  // Mark the incoming message as read right before starting the wait timer
-  try {
-    const peer = inputPeer || (await resolveInputPeerSafe(client, message)) || message.peerId;
-    const maxId = (message as any)?.id || 0;
-    if (peer && maxId) {
-      await (client as any)
-        .invoke(
-          new Api.messages.ReadHistory({
-            peer,
-            maxId,
-          })
-        )
-        .catch(() => { });
-    }
-  } catch (e) {
-    console.warn("Failed to mark message as read:", (e as any)?.message || e);
-  }
-  await sleep(waitBefore);
-
-  // Phase 2: show typing for configured duration
-  const typingFor = randomInRange(
-    appConfig().typingDurationMs.min,
-    appConfig().typingDurationMs.max
-  );
-  const stopTyping = startTyping();
-  await sleep(typingFor);
-
-  // Phase 3: send reply and stop typing
+  // Phase 3: send reply
   let outboundRecorded = false;
   try {
     const isGroupContext = isPeerChatOrChannel(message?.peerId);
@@ -1108,8 +1120,6 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     } catch (apiError) {
       console.error("API fallback also failed:", apiError);
     }
-  } finally {
-    stopTyping();
   }
   // TODO: Add logic to delete or end chat in some cases
 }
