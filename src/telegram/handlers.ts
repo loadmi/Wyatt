@@ -840,7 +840,8 @@ async function getSenderDisplayName(message: any): Promise<string> {
       return sender.title.trim();
     }
   } catch (error) {
-    // Silently fail if we can't get sender info
+    // Intentionally ignore errors when extracting sender info - not critical for operation
+    console.debug("Could not extract sender display name:", (error as Error)?.message || error);
   }
   return "";
 }
@@ -993,11 +994,14 @@ async function attemptHumanOverride(params: {
     return false;
   }
 
-  const requestMessageId = typeof sent?.id === "number"
-    ? sent.id
-    : typeof (sent as any)?.message?.id === "number"
-      ? sent.message.id
-      : undefined;
+  let requestMessageId: number | undefined;
+  if (typeof sent?.id === "number") {
+    requestMessageId = sent.id;
+  } else if (typeof (sent as any)?.message?.id === "number") {
+    requestMessageId = (sent as any).message.id;
+  } else {
+    requestMessageId = undefined;
+  }
 
   const decisionPromise = new Promise<HumanOverrideDecision>((resolve) => {
     pendingHumanOverrides.set(overrideId, {
@@ -1400,7 +1404,8 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
           : messageText;
       }
     } catch (extractError) {
-      // If we can't extract context, continue with defaults
+      // Intentionally ignore context extraction errors - we'll use default values
+      console.debug("Could not extract error context:", (extractError as Error)?.message || extractError);
     }
     
     // Log comprehensive error information

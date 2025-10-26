@@ -151,7 +151,8 @@ export function sanitizeForLog(
     const sanitized = sanitizeObject(data, maxDepth);
     return JSON.stringify(sanitized, null, 2);
   } catch (error) {
-    // Fallback if sanitization itself fails
+    // Fallback if sanitization itself fails - return safe placeholder
+    console.error('Sanitization failed:', (error as Error)?.message || error);
     return '[SANITIZATION_ERROR]';
   }
 }

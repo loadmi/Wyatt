@@ -247,11 +247,14 @@ export function startWebServer(): void {
     }
 
     const result = await sendSentimentToGroup(groupId);
-    const status = result.success
-      ? 201
-      : result.message.includes("not running")
-        ? 409
-        : 500;
+    let status: number;
+    if (result.success) {
+      status = 201;
+    } else if (result.message.includes("not running")) {
+      status = 409;
+    } else {
+      status = 500;
+    }
     res.status(status).json(result);
   });
 
@@ -278,11 +281,14 @@ export function startWebServer(): void {
     } catch (error) {
       const message = (error as any)?.message || "Failed to load chat history.";
       const lowered = message.toLowerCase();
-      const status = lowered.includes("not running")
-        ? 409
-        : lowered.includes("not found")
-          ? 404
-          : 500;
+      let status: number;
+      if (lowered.includes("not running")) {
+        status = 409;
+      } else if (lowered.includes("not found")) {
+        status = 404;
+      } else {
+        status = 500;
+      }
       res.status(status).json({ success: false, message });
     }
   });
@@ -295,20 +301,30 @@ export function startWebServer(): void {
       return res.status(400).json({ success: false, message: "Chat ID is required." });
     }
 
-    const text = typeof message === "string" ? message : message != null ? String(message) : "";
+    let text: string;
+    if (typeof message === "string") {
+      text = message;
+    } else if (message != null) {
+      text = String(message);
+    } else {
+      text = "";
+    }
     if (!text.trim()) {
       return res.status(400).json({ success: false, message: "Message text is required." });
     }
 
     const result = await sendMessageToChat(chatId, text);
     const lowered = result.message.toLowerCase();
-    const status = result.success
-      ? 201
-      : lowered.includes("not running")
-        ? 409
-        : lowered.includes("not found")
-          ? 404
-          : 400;
+    let status: number;
+    if (result.success) {
+      status = 201;
+    } else if (lowered.includes("not running")) {
+      status = 409;
+    } else if (lowered.includes("not found")) {
+      status = 404;
+    } else {
+      status = 400;
+    }
     res.status(status).json(result);
   });
 
@@ -320,7 +336,14 @@ export function startWebServer(): void {
       return res.status(400).json({ success: false, message: "Chat ID is required." });
     }
 
-    const personaId = typeof personaRaw === "string" ? personaRaw.trim() : personaRaw != null ? String(personaRaw).trim() : "";
+    let personaId: string;
+    if (typeof personaRaw === "string") {
+      personaId = personaRaw.trim();
+    } else if (personaRaw != null) {
+      personaId = String(personaRaw).trim();
+    } else {
+      personaId = "";
+    }
     if (!personaId) {
       return res.status(400).json({ success: false, message: "Persona identifier is required." });
     }
@@ -367,13 +390,16 @@ export function startWebServer(): void {
 
     const result = await sendBlendMessage(chatId);
     const lowered = (result.message || "").toLowerCase();
-    const status = result.success
-      ? 201
-      : lowered.includes("not running")
-        ? 409
-        : lowered.includes("not found")
-          ? 404
-          : 400;
+    let status: number;
+    if (result.success) {
+      status = 201;
+    } else if (lowered.includes("not running")) {
+      status = 409;
+    } else if (lowered.includes("not found")) {
+      status = 404;
+    } else {
+      status = 400;
+    }
     res.status(status).json(result);
   });
 
@@ -425,13 +451,16 @@ export function startWebServer(): void {
       const account = addTelegramAccount({
         label: typeof label === "string" ? label : String(label ?? ""),
         apiId: typeof apiId === "number" ? apiId : Number(apiId),
-        apiHash: typeof apiHash === "string" ? apiHash : apiHash != null ? String(apiHash) : "",
-        sessionString:
-          typeof sessionString === "string"
-            ? sessionString
-            : sessionString != null
-              ? String(sessionString)
-              : undefined,
+        apiHash: typeof apiHash === "string" ? apiHash : (apiHash != null ? String(apiHash) : ""),
+        sessionString: (() => {
+          if (typeof sessionString === "string") {
+            return sessionString;
+          } else if (sessionString != null) {
+            return String(sessionString);
+          } else {
+            return undefined;
+          }
+        })(),
       });
       res.status(201).json({
         success: true,
@@ -455,15 +484,16 @@ export function startWebServer(): void {
       patch.apiId = typeof apiId === "number" ? apiId : Number(apiId);
     }
     if (apiHash !== undefined) {
-      patch.apiHash = typeof apiHash === "string" ? apiHash : apiHash != null ? String(apiHash) : "";
+      patch.apiHash = typeof apiHash === "string" ? apiHash : (apiHash != null ? String(apiHash) : "");
     }
     if (sessionString !== undefined) {
-      patch.sessionString =
-        typeof sessionString === "string"
-          ? sessionString
-          : sessionString != null
-            ? String(sessionString)
-            : "";
+      if (typeof sessionString === "string") {
+        patch.sessionString = sessionString;
+      } else if (sessionString != null) {
+        patch.sessionString = String(sessionString);
+      } else {
+        patch.sessionString = "";
+      }
     }
 
     try {
@@ -637,7 +667,13 @@ export function startWebServer(): void {
         updates.mode = mode;
       }
       if (contact !== undefined) {
-        updates.contact = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
+        if (typeof contact === "string") {
+          updates.contact = contact.trim();
+        } else if (contact == null) {
+          updates.contact = "";
+        } else {
+          updates.contact = String(contact).trim();
+        }
       }
       if (wakeUpDelayMs !== undefined) {
         updates.wakeUpDelayMs = wakeUpDelayMs;
@@ -679,7 +715,14 @@ export function startWebServer(): void {
 
   app.post("/api/config/escalation", strictLimiter, (req: Request, res: Response) => {
     const { contact } = req.body || {};
-    const next = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
+    let next: string;
+    if (typeof contact === "string") {
+      next = contact.trim();
+    } else if (contact == null) {
+      next = "";
+    } else {
+      next = String(contact).trim();
+    }
     
     // Update both fields for backward compatibility
     setConfig({

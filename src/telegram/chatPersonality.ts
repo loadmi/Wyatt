@@ -111,7 +111,14 @@ async function loadStore(): Promise<void> {
         if (!personaId || !systemPrompt) continue;
         const createdRaw = Number(entry?.createdAt);
         const updatedRaw = Number(entry?.updatedAt);
-        const createdAt = Number.isFinite(createdRaw) ? createdRaw : Number.isFinite(updatedRaw) ? updatedRaw : now();
+        let createdAt: number;
+        if (Number.isFinite(createdRaw)) {
+          createdAt = createdRaw;
+        } else if (Number.isFinite(updatedRaw)) {
+          createdAt = updatedRaw;
+        } else {
+          createdAt = now();
+        }
         const updatedAt = Number.isFinite(updatedRaw) ? updatedRaw : createdAt;
         const record: ChatPersonaRecord = {
           personaId,

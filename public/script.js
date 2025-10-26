@@ -345,8 +345,13 @@ class BotController {
             } else {
                 this.log('Charts not available (skipping graph init)');
             }
-        } catch (e) {
-            try { this.log('Charts init failed, continuing without graphs'); } catch {}
+        } catch (error) {
+            try {
+                this.log('Charts init failed, continuing without graphs');
+            } catch (logError) {
+                // Intentionally ignore logging errors - charts are optional feature
+                console.error('Chart initialization and logging both failed:', error);
+            }
         }
     }
 
@@ -1182,8 +1187,9 @@ class BotController {
                     clearInterval(this._loginPollInterval);
                     this._loginPollInterval = null;
                 }
-            } catch (e) {
-                // ignore transient errors
+            } catch (error) {
+                // Intentionally ignore transient errors during account polling
+                console.debug('Account polling error (expected during normal operation):', error);
             } finally {
                 this._loginPollBusy = false;
             }
@@ -1896,7 +1902,8 @@ class BotController {
                 return stored;
             }
         } catch (error) {
-            // ignore storage errors
+            // Intentionally ignore localStorage errors - feature degrades gracefully
+            console.warn('Failed to read chat refresh speed from localStorage:', error);
         }
         return fallback;
     }
@@ -1905,7 +1912,8 @@ class BotController {
         try {
             localStorage.setItem('chatRefreshSpeed', this.chatRefreshSpeed);
         } catch (error) {
-            // ignore storage errors
+            // Intentionally ignore localStorage errors - feature degrades gracefully
+            console.warn('Failed to persist chat refresh speed to localStorage:', error);
         }
     }
 
@@ -2808,7 +2816,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const newTheme = toggle.checked ? 'dark' : 'light';
             applyTheme(newTheme);
             updateThemeLabel(label, newTheme);
-            try { localStorage.setItem('theme', newTheme); } catch (e) { }
+            try {
+                localStorage.setItem('theme', newTheme);
+            } catch (error) {
+                // Intentionally ignore localStorage errors - theme still works without persistence
+                console.warn('Failed to persist theme preference:', error);
+            }
             controller.refreshChartTheme();
             controller.resizeCharts();
         });
@@ -2817,8 +2830,18 @@ document.addEventListener('DOMContentLoaded', () => {
     controller.refreshChartTheme();
     // Ensure status polling starts even if earlier code aborted
     if (typeof controller.checkStatus === 'function') {
-        try { controller.checkStatus(); } catch (e) {}
-        try { setInterval(() => controller.checkStatus(), 5000); } catch (e) {}
+        try {
+            controller.checkStatus();
+        } catch (error) {
+            // Intentionally ignore initial status check errors - polling will retry
+            console.warn('Initial status check failed:', error);
+        }
+        try {
+            setInterval(() => controller.checkStatus(), 5000);
+        } catch (error) {
+            // Intentionally ignore interval setup errors - status polling is non-critical
+            console.error('Failed to setup status polling interval:', error);
+        }
     }
 });
 

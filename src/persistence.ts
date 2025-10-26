@@ -34,8 +34,9 @@ function stateFilePath(): string {
     if (!fsSync.existsSync(dir)) {
       fsSync.mkdirSync(dir, { recursive: true });
     }
-  } catch (e) {
+  } catch (error) {
     // If directory creation fails, fallback to project root file
+    console.warn('Failed to create data directory, using fallback location:', (error as Error)?.message || error);
     return path.join(process.cwd(), 'app.config.json');
   }
   return path.join(dir, 'config.json');

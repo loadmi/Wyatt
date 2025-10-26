@@ -151,6 +151,7 @@ async function setupClient(account: TelegramAccount): Promise<void> {
       return;
     } catch (error) {
       console.log("❌ Stored session was rejected, starting interactive login...");
+      console.warn("Session validation error:", (error as Error)?.message || error);
     }
   }
 
@@ -308,8 +309,9 @@ export async function startBot(): Promise<ControlResponse> {
     if (client) {
       try {
         await client.destroy();
-      } catch (e) {
-        // Ignore teardown errors
+      } catch (error) {
+        // Intentionally ignore teardown errors during cleanup - client may already be destroyed
+        console.warn("Client cleanup warning:", (error as Error)?.message || error);
       }
     }
 
@@ -886,9 +888,10 @@ async function setupClientNonInteractive(account: TelegramAccount): Promise<void
   try {
     await client.connect();
     await client.getDialogs({ limit: 1 });
-  } catch (e) {
+  } catch (error) {
+    const errorMsg = (error as Error)?.message || error;
     throw new Error(
-      "Existing session is invalid or expired; interactive login required",
+      `Existing session is invalid or expired; interactive login required. Details: ${errorMsg}`,
     );
   }
 }

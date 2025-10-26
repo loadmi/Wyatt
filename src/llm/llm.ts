@@ -114,7 +114,9 @@ function parseSuggestions(raw: string, limit: number): Array<{text: string, emot
         }
         return unique;
       }
-    } catch { }
+    } catch {
+      // Intentionally ignore JSON parse errors - we'll try alternative parsing methods
+    }
     return [];
   };
 
@@ -236,8 +238,8 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
       }
       console.warn('[LLM] OpenRouter: no content in response');
       return { ok: false, status: resp.status, text: '' };
-    } catch (e) {
-      console.warn('[LLM] OpenRouter: failed to parse JSON response');
+    } catch (parseError) {
+      console.warn('[LLM] OpenRouter: failed to parse JSON response:', (parseError as Error)?.message || parseError);
       return { ok: false, status: resp.status, text: '' };
     }
   } catch (e) {
