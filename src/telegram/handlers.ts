@@ -22,7 +22,7 @@ type ContextEntry = {
 
 // LRU cache implementation with size limits
 class LRUHistoryCache {
-  private cache = new Map<string, { data: ContextEntry[]; lastAccessed: number }>();
+  private readonly cache = new Map<string, { data: ContextEntry[]; lastAccessed: number }>();
   
   get(key: string): ContextEntry[] | undefined {
     const entry = this.cache.get(key);
@@ -1332,10 +1332,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     }
 
     let llmContext: LLMContextEntry[] = [];
-    // console.log("System Prompt:", personaPrompt);
     llmContext = convertContextToLLM(context, personaPrompt);
-
-    // console.log("Context:", llmContext);
 
     const composeStartedAt = Date.now();
 

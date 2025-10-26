@@ -19,8 +19,8 @@ export type ChatPersonaSummary = {
 
 // LRU cache implementation for persona prompts to prevent unbounded memory growth
 class LRUPersonaCache {
-  private cache = new Map<string, { prompt: string; lastAccessed: number }>();
-  private maxSize: number;
+  private readonly cache = new Map<string, { prompt: string; lastAccessed: number }>();
+  private readonly maxSize: number;
 
   constructor(maxSize: number = 50) {
     this.maxSize = maxSize;

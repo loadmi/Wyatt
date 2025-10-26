@@ -110,10 +110,6 @@ export function startWebServer(): void {
   }
 
   type AccountView = ReturnType<typeof getTelegramAccounts>[number];
-  const decorateAccount = (account: AccountView) => ({
-    ...account,
-    isActive: appConfig().activeAccountId === account.id,
-  });
 
   // Redact sensitive fields (apiHash, sessionString) from responses
   const sanitizeAccount = (account: AccountView) => {
