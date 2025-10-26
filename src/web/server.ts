@@ -34,6 +34,12 @@ import {
   resetChatPersonaToDefault as resetChatPersonaForChat,
 } from "../telegram/chatPersonality";
 import { loadPersonaFile } from "../utils/personaLoader";
+import {
+  listDecoyTemplates,
+  listDecoyArtifacts,
+  createDecoyArtifact,
+  getDecoyArtifact,
+} from "../utils/decoyArtifacts";
 
 const app: Express = express();
 const PORT = 8080;
@@ -294,7 +300,7 @@ export function startWebServer(): void {
 
   app.post("/api/chats/:chatId/messages", async (req: Request, res: Response) => {
     const { chatId } = req.params;
-    const { message } = req.body || {};
+    const { message, attachmentId } = req.body || {};
 
     if (!chatId) {
       return res.status(400).json({ success: false, message: "Chat ID is required." });
@@ -308,11 +314,29 @@ export function startWebServer(): void {
     } else {
       text = String(message);
     }
-    if (!text.trim()) {
-      return res.status(400).json({ success: false, message: "Message text is required." });
+    const trimmed = text.trim();
+    let attachment = null;
+    if (attachmentId) {
+      if (typeof attachmentId !== "string" || !attachmentId.trim()) {
+        return res.status(400).json({ success: false, message: "Attachment reference is invalid." });
+      }
+      const record = getDecoyArtifact(attachmentId.trim());
+      if (!record) {
+        return res.status(404).json({ success: false, message: "Attachment has expired or is unavailable." });
+      }
+      attachment = {
+        path: record.path,
+        filename: record.filename,
+        mimeType: record.mimeType,
+        kind: record.type === "pdf" ? "document" : "photo",
+      } as const;
     }
 
-    const result = await sendMessageToChat(chatId, text);
+    if (!trimmed && !attachment) {
+      return res.status(400).json({ success: false, message: "Message text or attachment is required." });
+    }
+
+    const result = await sendMessageToChat(chatId, { text: trimmed, attachment });
     const lowered = result.message.toLowerCase();
     let status: number;
     if (result.success) {
@@ -325,6 +349,50 @@ export function startWebServer(): void {
       status = 400;
     }
     res.status(status).json(result);
+  });
+
+  app.get("/api/decoys/templates", (req: Request, res: Response) => {
+    const templates = listDecoyTemplates().map(template => ({
+      id: template.id,
+      label: template.label,
+      type: template.type,
+      description: template.description,
+    }));
+    res.json({ success: true, templates });
+  });
+
+  app.get("/api/decoys", (req: Request, res: Response) => {
+    const artifacts = listDecoyArtifacts();
+    res.json({ success: true, artifacts });
+  });
+
+  app.post("/api/decoys", async (req: Request, res: Response) => {
+    const { templateId, overrides, ttlMs } = req.body || {};
+    if (typeof templateId !== "string" || !templateId.trim()) {
+      return res.status(400).json({ success: false, message: "Template ID is required." });
+    }
+
+    try {
+      const artifact = await createDecoyArtifact(templateId.trim(), {
+        overrides: overrides && typeof overrides === "object" ? overrides : undefined,
+        ttlMs: typeof ttlMs === "number" ? ttlMs : undefined,
+      });
+      res.status(201).json({
+        success: true,
+        artifact: {
+          id: artifact.id,
+          templateId: artifact.templateId,
+          type: artifact.type,
+          filename: artifact.filename,
+          mimeType: artifact.mimeType,
+          createdAt: artifact.createdAt,
+          expiresAt: artifact.expiresAt,
+        },
+      });
+    } catch (error) {
+      const message = (error as any)?.message || "Failed to generate decoy artifact.";
+      res.status(400).json({ success: false, message });
+    }
   });
 
   app.post("/api/chats/:chatId/personality", async (req: Request, res: Response) => {
