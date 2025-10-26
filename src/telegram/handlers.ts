@@ -1,6 +1,7 @@
 // src/telegram/handlers.ts
 import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Api } from "telegram";
+import { Button } from "telegram/tl/custom/button";
 import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse, getSuggestedReplies } from "../llm/llm";
@@ -607,25 +608,36 @@ async function attemptHumanOverride(params: {
 
   const prettyDelay = Math.max(1, Math.round(wakeUpDelay / 1000));
   const overrideId = `wake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  const suggestionLines = suggestions.map((entry, idx) => `${idx + 1}. ${entry}`).join("\n");
+  
+  // Create a clear, tappable message format with emoji buttons
+  const suggestionLines = suggestions.map((entry, idx) => {
+    const emoji = ['1️⃣', '2️⃣', '3️⃣'][idx] || `${idx + 1}️⃣`;
+    return `${emoji} **Option ${idx + 1}**\n   ${entry}`;
+  }).join("\n\n");
+  
   const notification = [
-    `Wake-up override requested (${overrideId}).`,
-    `Contact: ${senderIdString}${chatId ? ` · Chat ${chatId}` : ""}`,
-    `Message:`,
-    truncatedMessage,
+    `🔔 **WAKE-UP REQUEST**`,
     ``,
-    `Suggestions:`,
+    `👤 Contact: \`${senderIdString}\`${chatId ? ` · Chat ${chatId}` : ""}`,
+    `💬 Message: "${truncatedMessage}"`,
+    ``,
+    `━━━━━━━━━━━━━━━━`,
+    `📝 **Quick Reply Options:**`,
+    ``,
     suggestionLines,
     ``,
-    `Reply within ~${prettyDelay}s by tapping a button or sending your own text.`,
+    `━━━━━━━━━━━━━━━━`,
+    `⏰ Reply within **${prettyDelay}s**`,
+    ``,
+    `**To respond:**`,
+    `• Type **1**, **2**, or **3** to select an option`,
+    `• Type **ignore** to skip`,
+    `• Or send your own custom message`,
   ].join("\n");
-
-  const buttonRows = suggestions.map((_, idx) => [`Send ${idx + 1}`]);
-  buttonRows.push(["Ignore"]);
 
   let sent: any;
   try {
-    sent = await client.sendMessage(humanPeer.input, { message: notification, buttons: buttonRows });
+    sent = await client.sendMessage(humanPeer.input, { message: notification });
   } catch (error) {
     console.warn("Failed to notify wake-up supervisor:", (error as any)?.message || error);
     await sleep(wakeUpDelay);
