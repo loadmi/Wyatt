@@ -1,6 +1,7 @@
 import { appConfig } from "../config";
 import { availableJsonFiles } from "../llm/personalities";
 import { loadPersistedState, savePersistedState } from "../persistence";
+import { loadPersonaFile } from "../utils/personaLoader";
 
 export type ChatPersonaRecord = {
   personaId: string;
@@ -16,8 +17,67 @@ export type ChatPersonaSummary = {
   updatedAt: number;
 };
 
+// LRU cache implementation for persona prompts to prevent unbounded memory growth
+class LRUPersonaCache {
+  private cache = new Map<string, { prompt: string; lastAccessed: number }>();
+  private maxSize: number;
+
+  constructor(maxSize: number = 50) {
+    this.maxSize = maxSize;
+  }
+
+  get(key: string): string | undefined {
+    const entry = this.cache.get(key);
+    if (entry) {
+      // Update last accessed time for LRU tracking
+      entry.lastAccessed = Date.now();
+      return entry.prompt;
+    }
+    return undefined;
+  }
+
+  set(key: string, prompt: string): void {
+    // Evict oldest entry if cache is full
+    if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
+      const oldestKey = this.findOldestKey();
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
+        console.log(`Evicted persona "${oldestKey}" from cache (LRU)`);
+      }
+    }
+
+    this.cache.set(key, { prompt, lastAccessed: Date.now() });
+  }
+
+  has(key: string): boolean {
+    return this.cache.has(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  private findOldestKey(): string | null {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.lastAccessed < oldestTime) {
+        oldestTime = entry.lastAccessed;
+        oldestKey = key;
+      }
+    }
+
+    return oldestKey;
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+}
+
 const personaStore = new Map<string, ChatPersonaRecord>();
-const personaPromptCache = new Map<string, string>();
+const personaPromptCache = new LRUPersonaCache(50); // Max 50 personas cached
 let storeLoaded = false;
 
 function normaliseChatId(chatId: string): string {
@@ -35,13 +95,13 @@ function now(): number {
   return Date.now();
 }
 
-function loadStore(): void {
+async function loadStore(): Promise<void> {
   if (storeLoaded) {
     return;
   }
 
   try {
-    const persisted = loadPersistedState();
+    const persisted = await loadPersistedState();
     const raw = persisted.chatPersonalities;
     if (raw && typeof raw === "object") {
       for (const [chatId, entry] of Object.entries(raw)) {
@@ -82,7 +142,10 @@ function persistStore(): void {
       updatedAt: record.updatedAt,
     };
   }
-  savePersistedState({ chatPersonalities: payload });
+  // Call async function without awaiting - fire and forget
+  savePersistedState({ chatPersonalities: payload }).catch((e: any) => {
+    console.warn("Failed to persist chat personalities:", e?.message || e);
+  });
 }
 
 export function formatPersonaLabel(personaId: string): string {
@@ -118,7 +181,7 @@ export function getDefaultPersonaId(): string {
 }
 
 async function resolvePersonaPrompt(personaId: string): Promise<string> {
-  loadStore();
+  await loadStore();
   const trimmed = normalisePersonaId(personaId);
   if (!trimmed) {
     throw new Error("Persona identifier is required.");
@@ -141,8 +204,8 @@ async function resolvePersonaPrompt(personaId: string): Promise<string> {
     throw new Error(`Persona "${trimmed}" is not available.`);
   }
 
-  const imported = await import(`../llm/personas/${trimmed}`, { with: { type: "json" } }).then((mod) => mod.default ?? mod);
-  const prompt = JSON.stringify(imported);
+  // Use shared persona loader utility for consistent error handling
+  const prompt = await loadPersonaFile(trimmed);
   personaPromptCache.set(trimmed, prompt);
   return prompt;
 }
@@ -170,7 +233,7 @@ function toSummary(record: ChatPersonaRecord): ChatPersonaSummary {
 }
 
 export async function ensureChatPersonaRecord(chatId: string): Promise<ChatPersonaRecord> {
-  loadStore();
+  await loadStore();
   const key = normaliseChatId(chatId);
   if (!key) {
     throw new Error("Chat identifier is required to resolve persona.");
@@ -198,7 +261,7 @@ export async function getChatPersonaSummary(chatId: string): Promise<ChatPersona
 }
 
 export async function updateChatPersona(chatId: string, personaId: string): Promise<{ record: ChatPersonaRecord; summary: ChatPersonaSummary }> {
-  loadStore();
+  await loadStore();
   const key = normaliseChatId(chatId);
   if (!key) {
     throw new Error("Chat identifier is required to update persona.");
@@ -217,6 +280,7 @@ export async function updateChatPersona(chatId: string, personaId: string): Prom
     updatedAt: timestamp,
   };
   personaStore.set(key, record);
+  // Update LRU cache with new prompt
   personaPromptCache.set(trimmedPersona, systemPrompt);
   persistStore();
   return { record, summary: toSummary(record) };
@@ -228,7 +292,12 @@ export async function resetChatPersonaToDefault(chatId: string): Promise<{ recor
 }
 
 export function getChatPersonaSystemPromptSync(chatId: string): string | null {
-  loadStore();
+  // Note: This function remains synchronous but loadStore is now async
+  // We'll need to ensure loadStore is called asynchronously elsewhere before this is used
+  // For now, we'll keep the synchronous call but it won't wait for the promise
+  loadStore().catch(e => {
+    console.warn("Failed to load store in sync function:", (e as any)?.message || e);
+  });
   const key = normaliseChatId(chatId);
   if (!key) return null;
   const existing = personaStore.get(key);

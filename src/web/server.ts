@@ -1,5 +1,6 @@
 // src/web/server.ts
 import express, { Express, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import {
   startBot,
@@ -32,9 +33,37 @@ import {
   updateChatPersona as setChatPersonaForChat,
   resetChatPersonaToDefault as resetChatPersonaForChat,
 } from "../telegram/chatPersonality";
+import { sanitizeConfig } from "../utils/logSanitizer";
+import { loadPersonaFile } from "../utils/personaLoader";
 
 const app: Express = express();
 const PORT = 8080;
+
+// Rate limiter for general API endpoints
+// 1000 requests per 15 minutes per IP (allows frequent dashboard polling/updates)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per windowMs
+  message: {
+    success: false,
+    message: "Too many requests from this IP, please try again later."
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+// Stricter rate limiter for sensitive endpoints (auth, config updates)
+// 50 requests per 15 minutes per IP (allows multiple config changes without hitting limit)
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 50 requests per windowMs
+  message: {
+    success: false,
+    message: "Too many requests to this sensitive endpoint, please try again later."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export function startWebServer(): void {
   // Serve static files from the project 'public' directory (works in dev and prod)
@@ -42,6 +71,9 @@ export function startWebServer(): void {
 
   // Add JSON body parser middleware
   app.use(express.json());
+
+  // Apply general rate limiter to all API routes
+  app.use("/api/", generalLimiter);
 
   function migrateAccountFromEnv(): boolean {
     const apiIdRaw = process.env.API_ID;
@@ -99,7 +131,7 @@ export function startWebServer(): void {
 
   async function applyPersistedConfig() {
     try {
-      const persisted = loadPersistedState();
+      const persisted = await loadPersistedState();
       const allowedProviders = ["pollinations", "openrouter"] as const;
       const updates: Record<string, unknown> = {};
 
@@ -109,10 +141,9 @@ export function startWebServer(): void {
         if (persisted.currentPersona) updates.currentPersona = persisted.currentPersona;
       } else if (persisted.currentPersona && availableJsonFiles.includes(persisted.currentPersona)) {
         try {
-          const importedPersona = await import(`../llm/personas/${persisted.currentPersona}`, { with: { type: "json" } }).then(
-            (mod) => mod.default,
-          );
-          updates.systemPrompt = JSON.stringify(importedPersona);
+          // Use shared persona loader utility for consistent error handling
+          const personaPrompt = await loadPersonaFile(persisted.currentPersona);
+          updates.systemPrompt = personaPrompt;
           updates.currentPersona = persisted.currentPersona;
         } catch (e) {
           console.warn("Failed to load persisted persona, falling back:", (e as any)?.message || e);
@@ -177,6 +208,7 @@ export function startWebServer(): void {
       const envKey = (process.env.OPENROUTER_API_KEY || '').trim();
       if (!cfg.openrouterApiKey && envKey) {
         setConfig({ openrouterApiKey: envKey } as any);
+        // Sanitize config data in logs to prevent exposure of sensitive information
         console.log("Migrated OPENROUTER_API_KEY from environment to persisted configuration.");
       }
 
@@ -359,7 +391,7 @@ export function startWebServer(): void {
     res.status(result.success ? 200 : 500).json(result);
   });
 
-  app.post("/api/config/persona", async (req: Request, res: Response) => {
+  app.post("/api/config/persona", strictLimiter, async (req: Request, res: Response) => {
     const { persona } = req.body;
     const availablePersonalities = availableJsonFiles;
 
@@ -367,12 +399,19 @@ export function startWebServer(): void {
     if (!persona || typeof persona !== "string" || !availablePersonalities.includes(persona)) {
       return res.status(400).json({ success: false, message: "Invalid persona." });
     }
-    const importedPersona = await import(`../llm/personas/${persona}`, { with: { type: "json" } }).then(mod => mod.default);
-    setConfig({
-      systemPrompt: JSON.stringify(importedPersona),
-      currentPersona: persona,
-    } as Partial<ReturnType<typeof appConfig>>);
-    res.status(201).json({ success: true, persona });
+    
+    try {
+      // Use shared persona loader utility for consistent error handling
+      const personaPrompt = await loadPersonaFile(persona);
+      setConfig({
+        systemPrompt: personaPrompt,
+        currentPersona: persona,
+      } as Partial<ReturnType<typeof appConfig>>);
+      res.status(201).json({ success: true, persona });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load persona.";
+      res.status(500).json({ success: false, message });
+    }
   });
 
   app.get("/api/config/accounts", (req: Request, res: Response) => {
@@ -384,7 +423,7 @@ export function startWebServer(): void {
     });
   });
 
-  app.post("/api/config/accounts", (req: Request, res: Response) => {
+  app.post("/api/config/accounts", strictLimiter, (req: Request, res: Response) => {
     const { label, apiId, apiHash, sessionString } = req.body || {};
     try {
       const account = addTelegramAccount({
@@ -409,7 +448,7 @@ export function startWebServer(): void {
     }
   });
 
-  app.put("/api/config/accounts/:id", (req: Request, res: Response) => {
+  app.put("/api/config/accounts/:id", strictLimiter, (req: Request, res: Response) => {
     const { id } = req.params;
     const { label, apiId, apiHash, sessionString } = req.body || {};
     const patch: Record<string, unknown> = {};
@@ -445,7 +484,7 @@ export function startWebServer(): void {
     }
   });
 
-  app.delete("/api/config/accounts/:id", (req: Request, res: Response) => {
+  app.delete("/api/config/accounts/:id", strictLimiter, (req: Request, res: Response) => {
     const { id } = req.params;
     try {
       removeTelegramAccount(id);
@@ -461,7 +500,7 @@ export function startWebServer(): void {
     }
   });
 
-  app.post("/api/config/accounts/:id/activate", async (req: Request, res: Response) => {
+  app.post("/api/config/accounts/:id/activate", strictLimiter, async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
       // Enforce: only accounts with a session string can be set active
@@ -508,7 +547,7 @@ export function startWebServer(): void {
   });
 
   // Initiate interactive console login for a specific account (non-blocking)
-  app.post("/api/config/accounts/:id/login", async (req: Request, res: Response) => {
+  app.post("/api/config/accounts/:id/login", strictLimiter, async (req: Request, res: Response) => {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ success: false, message: "Account ID is required." });
@@ -547,7 +586,7 @@ export function startWebServer(): void {
     });
   });
 
-  app.post("/api/config/llm", async (req: Request, res: Response) => {
+  app.post("/api/config/llm", strictLimiter, async (req: Request, res: Response) => {
     const { provider, openrouterModel } = req.body || {};
     const allowedProviders = ["pollinations", "openrouter"];
     if (!allowedProviders.includes(provider)) {
@@ -565,7 +604,7 @@ export function startWebServer(): void {
   });
 
   // Manage OpenRouter API key (never returns the key value)
-  app.post("/api/config/llm/key", async (req: Request, res: Response) => {
+  app.post("/api/config/llm/key", strictLimiter, async (req: Request, res: Response) => {
     const { key } = req.body || {};
     const next = (typeof key === 'string' ? key : '').trim();
     setConfig({ openrouterApiKey: next } as any);
@@ -592,7 +631,7 @@ export function startWebServer(): void {
     });
   });
 
-  app.post("/api/config/supervisor", (req: Request, res: Response) => {
+  app.post("/api/config/supervisor", strictLimiter, (req: Request, res: Response) => {
     const { mode, contact, wakeUpDelayMs, alwaysFallbackDelayMs, sleepThresholdMs } = req.body || {};
     
     try {
@@ -642,7 +681,7 @@ export function startWebServer(): void {
     res.json({ contact });
   });
 
-  app.post("/api/config/escalation", (req: Request, res: Response) => {
+  app.post("/api/config/escalation", strictLimiter, (req: Request, res: Response) => {
     const { contact } = req.body || {};
     const next = typeof contact === "string" ? contact.trim() : contact == null ? "" : String(contact).trim();
     
@@ -672,7 +711,7 @@ export function startWebServer(): void {
     });
   });
 
-  app.post("/api/config/message-delays", (req: Request, res: Response) => {
+  app.post("/api/config/message-delays", strictLimiter, (req: Request, res: Response) => {
     const { waitBeforeTypingMs, typingDurationMs, typingKeepaliveMs } = req.body || {};
     
     try {

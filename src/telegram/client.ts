@@ -17,6 +17,7 @@ import { toIdString, toStableChatKey } from "./idUtils";
 let client: TelegramClient;
 let isRunning = false;
 let isStopping = false;
+let isTransitioning = false; // Mutex to prevent concurrent start/stop operations
 let messageEvent: NewMessage | undefined;
 
 type GroupCacheEntry = {
@@ -284,10 +285,20 @@ export async function initiateAccountConsoleLogin(accountId: string): Promise<Co
 }
 
 export async function startBot(): Promise<ControlResponse> {
+  // Check if already running
   if (isRunning) {
     console.log("Bot is already running.");
     return { success: true, message: "Bot is already running." };
   }
+
+  // Check if a start/stop operation is already in progress
+  if (isTransitioning) {
+    console.log("Bot start/stop operation already in progress.");
+    return { success: false, message: "Bot start/stop operation already in progress. Please wait." };
+  }
+
+  // Set transitioning flag to prevent concurrent operations
+  isTransitioning = true;
 
   try {
     const account = requireActiveAccount();
@@ -321,14 +332,28 @@ export async function startBot(): Promise<ControlResponse> {
     isRunning = false;
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, message: `Failed to start bot: ${errorMessage}` };
+  } finally {
+    // Always clear the transitioning flag when operation completes
+    isTransitioning = false;
   }
 }
 
 export async function stopBot(): Promise<ControlResponse> {
+  // Check if already stopped
   if (!isRunning) {
     console.log("Bot is not running.");
     return { success: true, message: "Bot is already stopped." };
   }
+
+  // Check if a start/stop operation is already in progress
+  if (isTransitioning) {
+    console.log("Bot start/stop operation already in progress.");
+    return { success: false, message: "Bot start/stop operation already in progress. Please wait." };
+  }
+
+  // Set transitioning flag to prevent concurrent operations
+  isTransitioning = true;
+
   try {
     console.log("Stopping Telegram bot...");
     await teardownClient();
@@ -342,6 +367,9 @@ export async function stopBot(): Promise<ControlResponse> {
     isRunning = false;
     client = null as any; // Reset client reference even on error
     return { success: false, message: "Failed to stop bot." };
+  } finally {
+    // Always clear the transitioning flag when operation completes
+    isTransitioning = false;
   }
 }
 

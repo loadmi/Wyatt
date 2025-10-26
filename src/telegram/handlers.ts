@@ -8,6 +8,7 @@ import { getResponse, getSuggestedReplies } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 import { toIdString, toStableChatKey } from "./idUtils";
+import { sanitizeMessageText } from "../utils/logSanitizer";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -116,6 +117,29 @@ const pendingHumanOverrides = new Map<string, PendingHumanOverride>();
 let cachedHumanPeerKey: string | null = null;
 let cachedHumanPeerRaw: string | null = null;
 
+// Periodic cleanup of expired overrides to prevent memory leaks
+function cleanupExpiredOverrides(): void {
+  const now = Date.now();
+  const expired: string[] = [];
+  
+  for (const [id, override] of pendingHumanOverrides.entries()) {
+    if (override.resolved || override.expiresAt <= now) {
+      expired.push(id);
+    }
+  }
+  
+  for (const id of expired) {
+    pendingHumanOverrides.delete(id);
+  }
+  
+  if (expired.length > 0) {
+    console.log(`Cleaned up ${expired.length} expired supervisor override(s)`);
+  }
+}
+
+// Run cleanup every 5 minutes
+setInterval(cleanupExpiredOverrides, 5 * 60 * 1000);
+
 // Cached self info to detect mentions/replies in group chats
 let selfUsernameCached: string | null = null;
 let selfIdStringCached: string | null = null;
@@ -127,10 +151,10 @@ type InteractionRecord = {
  };
 
 // Load persisted interaction tracker data
-function loadInteractionTracker(): Map<string, InteractionRecord> {
+async function loadInteractionTracker(): Promise<Map<string, InteractionRecord>> {
    try {
      const { loadPersistedState } = require("../persistence");
-     const persisted = loadPersistedState();
+     const persisted = await loadPersistedState();
      const tracker = new Map<string, InteractionRecord>();
 
      if (persisted.interactionTracker) {
@@ -146,7 +170,15 @@ function loadInteractionTracker(): Map<string, InteractionRecord> {
    }
  }
 
-const interactionTracker = loadInteractionTracker();
+// Initialize interaction tracker asynchronously
+const interactionTracker = new Map<string, InteractionRecord>();
+loadInteractionTracker().then(tracker => {
+  tracker.forEach((value, key) => {
+    interactionTracker.set(key, value);
+  });
+}).catch(e => {
+  console.warn("Failed to initialize interaction tracker:", (e as any)?.message || e);
+});
 
 // Helper function to get cache key for interaction tracking
 function getInteractionKey(senderId: string, chatId?: string): string {
@@ -176,7 +208,10 @@ function saveInteractionTracker(): void {
      interactionTracker.forEach((record, key) => {
        data[key] = record;
      });
-     savePersistedState({ interactionTracker: data });
+     // Call async function without awaiting - fire and forget
+     savePersistedState({ interactionTracker: data }).catch((e: any) => {
+       console.warn("Failed to save interaction tracker:", e?.message || e);
+     });
    } catch (e) {
      console.warn("Failed to save interaction tracker:", (e as any)?.message || e);
    }
@@ -464,16 +499,30 @@ export type LLMContextEntry = {
 
 // Converts local context entries to LLM-compatible messages (oldest -> newest).
 // Optionally prepend a system prompt if provided.
+// Optimized to reduce allocations: pre-allocates array with known size instead of using map() + spread.
 export function convertContextToLLM(context: ContextEntry[], systemPrompt?: string): LLMContextEntry[] {
-  const mapped: LLMContextEntry[] = context.map((m) => ({
-    role: m.from === "me" ? "assistant" : "user",
-    content: m.text,
-  }));
-
-  if (systemPrompt && systemPrompt.trim().length > 0) {
-    return [{ role: "system", content: systemPrompt.trim() }, ...mapped];
+  // Optimization: Pre-allocate array with exact size to avoid dynamic resizing
+  const hasSystemPrompt = systemPrompt && systemPrompt.trim().length > 0;
+  const totalSize = hasSystemPrompt ? context.length + 1 : context.length;
+  const result: LLMContextEntry[] = new Array(totalSize);
+  
+  let writeIndex = 0;
+  
+  // Add system prompt first if provided (reuse trimmed value to avoid redundant trim())
+  if (hasSystemPrompt) {
+    result[writeIndex++] = { role: "system", content: systemPrompt!.trim() };
   }
-  return mapped;
+  
+  // Convert context entries directly into pre-allocated array
+  for (let i = 0; i < context.length; i++) {
+    const m = context[i];
+    result[writeIndex++] = {
+      role: m.from === "me" ? "assistant" : "user",
+      content: m.text,
+    };
+  }
+  
+  return result;
 }
 
 async function handleHumanOverrideMessage(message: any, client: any): Promise<boolean> {
@@ -1055,9 +1104,12 @@ async function resolveInputPeerSafe(client: any, message: any): Promise<any | un
 
 // Fetches the full text message history with a peer (oldest -> newest order).
 // Respects configured limits to prevent memory issues with very long chats.
+// Optimized with larger page size (200 vs 100) for fewer API calls and performance logging.
 async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promise<ContextEntry[]> {
+  const fetchStartTime = Date.now();
   const cached = historyCache.get(cacheKey);
-  const pageSize = 100;
+  // Optimization: Increased page size from 100 to 200 to reduce API calls by ~50%
+  const pageSize = 200;
   const config = appConfig();
   const maxMessages = config.historyCache?.maxMessagesPerChat || 500;
 
@@ -1066,8 +1118,10 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
     const all: ContextEntry[] = [];
     let offsetId = 0;
     let totalFetched = 0;
+    let apiCalls = 0;
     
     while (totalFetched < maxMessages) {
+      apiCalls++;
       const res: any = await client
         .invoke(
           new Api.messages.GetHistory({
@@ -1093,6 +1147,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
         if (m instanceof Api.Message && typeof m.message === "string" && m.message.length > 0) {
           all.push({ id: m.id, date: Number(m.date) || 0, from: m.out ? "me" : "user", text: m.message });
           totalFetched++;
+          // Early termination: stop immediately if we hit the message limit mid-page
           if (totalFetched >= maxMessages) break;
         }
       }
@@ -1100,11 +1155,17 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
       const last = res.messages[res.messages.length - 1];
       if (!last || typeof last.id !== "number") break;
       offsetId = last.id;
+      // Early termination: exit if we've hit the limit or received fewer messages than requested
       if (res.messages.length < pageSize || totalFetched >= maxMessages) break;
     }
 
     all.sort((a, b) => a.id - b.id);
     historyCache.set(cacheKey, all);
+    
+    const fetchDuration = Date.now() - fetchStartTime;
+    console.log(
+      `History fetch completed for ${cacheKey}: ${totalFetched} messages in ${apiCalls} API calls (${fetchDuration}ms)`
+    );
     
     if (totalFetched >= maxMessages) {
       console.log(`History fetch limited to ${maxMessages} messages for ${cacheKey}`);
@@ -1118,9 +1179,11 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
   let more: ContextEntry[] = [];
   let offsetId = 0;
   let totalFetched = 0;
+  let apiCalls = 0;
   const remainingCapacity = maxMessages - cached.length;
   
   while (totalFetched < remainingCapacity) {
+    apiCalls++;
     const res: any = await client
       .invoke(
         new Api.messages.GetHistory({
@@ -1148,6 +1211,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
         if (typeof m.id === "number" && m.id > lastKnownId) {
           more.push({ id: m.id, date: Number(m.date) || 0, from: m.out ? "me" : "user", text: m.message });
           totalFetched++;
+          // Early termination: stop immediately if we hit the capacity limit mid-page
           if (totalFetched >= remainingCapacity) break;
         }
       }
@@ -1156,6 +1220,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
     const last = res.messages[res.messages.length - 1];
     if (!last || typeof last.id !== "number") break;
     offsetId = last.id;
+    // Early termination: exit if we've hit the limit or received fewer messages than requested
     if (res.messages.length < pageSize || totalFetched >= remainingCapacity) break;
   }
 
@@ -1163,147 +1228,200 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
     more.sort((a, b) => a.id - b.id);
     const updated = cached.concat(more);
     historyCache.set(cacheKey, updated);
+    
+    const fetchDuration = Date.now() - fetchStartTime;
+    console.log(
+      `Incremental history update for ${cacheKey}: ${totalFetched} new messages in ${apiCalls} API calls (${fetchDuration}ms)`
+    );
+    
     return updated;
   }
 
+  const fetchDuration = Date.now() - fetchStartTime;
+  console.log(`History cache hit for ${cacheKey} (${fetchDuration}ms)`);
   return cached;
 }
 
 export async function messageHandler(event: NewMessageEvent): Promise<void> {
-  const message = event.message;
-  const client = (event as any)._client;
-
-  if (!message) {
-    console.log("No message in event, skipping");
-    return;
-  }
-
-  const messageText = message.message;
-  const senderId = (message.fromId as any)?.userId;
-  const isOutgoing = message.out;
-
-  if (!messageText || !senderId || !client || isOutgoing) {
-    return;
-  }
-
-  if (await handleHumanOverrideMessage(message, client)) {
-    return;
-  }
-
-  const senderIdString = senderId.toString();
-  console.log(`Received message from ${senderIdString}: "${messageText}"`);
-
-  // Only respond in private chats, or in groups when explicitly mentioned or replied to
   try {
-    const allowed = await shouldRespondInContext(message, client);
-    if (!allowed) {
-      if (isPeerChatOrChannel(message?.peerId)) {
-        console.log(
-          `Skipping group message from ${senderIdString}: not mentioned or not a reply`
-        );
+    const message = event.message;
+    const client = (event as any)._client;
+
+    if (!message) {
+      console.log("No message in event, skipping");
+      return;
+    }
+
+    const messageText = message.message;
+    const senderId = (message.fromId as any)?.userId;
+    const isOutgoing = message.out;
+
+    if (!messageText || !senderId || !client || isOutgoing) {
+      return;
+    }
+
+    if (await handleHumanOverrideMessage(message, client)) {
+      return;
+    }
+
+    const senderIdString = senderId.toString();
+    // Sanitize message text for logging to prevent exposure of sensitive data
+    const sanitizedText = sanitizeMessageText(messageText, 100);
+    console.log(`Received message from ${senderIdString}: "${sanitizedText}"`);
+
+    // Only respond in private chats, or in groups when explicitly mentioned or replied to
+    try {
+      const allowed = await shouldRespondInContext(message, client);
+      if (!allowed) {
+        if (isPeerChatOrChannel(message?.peerId)) {
+          console.log(
+            `Skipping group message from ${senderIdString}: not mentioned or not a reply`
+          );
+        }
+        return;
       }
-      return;
+    } catch {
+      // On any detection error, default to not responding in group contexts
+      if (!isPeerUser(message?.peerId)) {
+        console.log(
+          `Skipping group message from ${senderIdString}: mention/reply detection error`
+        );
+        return;
+      }
     }
-  } catch {
-    // On any detection error, default to not responding in group contexts
-    if (!isPeerUser(message?.peerId)) {
-      console.log(
-        `Skipping group message from ${senderIdString}: mention/reply detection error`
+
+    recordInbound(senderIdString);
+
+    // Supervisor contact logic: check mode and determine if supervisor should be contacted
+    const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdString(message.peerId) : undefined;
+    const chatId = chatIdRaw || undefined; // Convert null to undefined
+    const peerKey = toIdString(message?.peerId);
+    const conversationKey = chatId ?? peerKey ?? senderIdString;
+    
+    // Check if supervisor should be contacted based on mode
+    const cfg = appConfig() as any;
+    const supervisorMode = cfg?.supervisor?.mode || 'wake-up';
+    const needsSupervisorContact = shouldContactSupervisor(senderIdString, chatId);
+
+    // Resolve input peer early since we need it for history lookups
+    let inputPeer: any = undefined;
+    inputPeer = await resolveInputPeerSafe(client, message);
+
+    // Build conversation context: full history with this user
+    let context: ContextEntry[] = [];
+    try {
+      if (inputPeer) {
+        context = await fetchFullHistory(client, inputPeer, conversationKey);
+      }
+    } catch (e) {
+      console.error("Failed to build context:", e);
+    }
+
+    let personaRecord: any = null;
+    let personaPrompt = appConfig().systemPrompt;
+    try {
+      personaRecord = await ensureChatPersonaRecord(conversationKey);
+      if (personaRecord?.systemPrompt?.trim()) {
+        personaPrompt = personaRecord.systemPrompt;
+      }
+    } catch (error) {
+      console.warn(
+        `Falling back to default persona for chat ${conversationKey}:`,
+        (error as any)?.message || error,
       );
-      return;
     }
-  }
 
-  recordInbound(senderIdString);
+    let llmContext: LLMContextEntry[] = [];
+    // console.log("System Prompt:", personaPrompt);
+    llmContext = convertContextToLLM(context, personaPrompt);
 
-  // Supervisor contact logic: check mode and determine if supervisor should be contacted
-  const chatIdRaw = isPeerChatOrChannel(message?.peerId) ? toIdString(message.peerId) : undefined;
-  const chatId = chatIdRaw || undefined; // Convert null to undefined
-  const peerKey = toIdString(message?.peerId);
-  const conversationKey = chatId ?? peerKey ?? senderIdString;
-  
-  // Check if supervisor should be contacted based on mode
-  const cfg = appConfig() as any;
-  const supervisorMode = cfg?.supervisor?.mode || 'wake-up';
-  const needsSupervisorContact = shouldContactSupervisor(senderIdString, chatId);
+    // console.log("Context:", llmContext);
 
-  // Resolve input peer early since we need it for history lookups
-  let inputPeer: any = undefined;
-  inputPeer = await resolveInputPeerSafe(client, message);
+    const composeStartedAt = Date.now();
 
-  // Build conversation context: full history with this user
-  let context: ContextEntry[] = [];
-  try {
-    if (inputPeer) {
-      context = await fetchFullHistory(client, inputPeer, conversationKey);
+    // Contact supervisor if needed (based on mode: disabled/always/wake-up)
+    if (supervisorMode !== 'disabled' && needsSupervisorContact) {
+      const isAlwaysMode = supervisorMode === 'always';
+      const overrideHandled = await attemptHumanOverride({
+        client,
+        message,
+        inputPeer,
+        senderIdString,
+        chatId,
+        conversationKey,
+        personaRecord,
+        llmContext,
+        messageText: (messageText ?? "").toString(),
+        isAlwaysMode,
+        startedAt: composeStartedAt,
+      });
+      if (overrideHandled) {
+        return;
+      }
     }
-  } catch (e) {
-    console.error("Failed to build context:", e);
-  }
 
-  let personaRecord: any = null;
-  let personaPrompt = appConfig().systemPrompt;
-  try {
-    personaRecord = await ensureChatPersonaRecord(conversationKey);
-    if (personaRecord?.systemPrompt?.trim()) {
-      personaPrompt = personaRecord.systemPrompt;
-    }
-  } catch (error) {
-    console.warn(
-      `Falling back to default persona for chat ${conversationKey}:`,
-      (error as any)?.message || error,
-    );
-  }
+    const replyText = await getResponse(llmContext) || "Ttyl xoxo";
 
-  let llmContext: LLMContextEntry[] = [];
-  // console.log("System Prompt:", personaPrompt);
-  llmContext = convertContextToLLM(context, personaPrompt);
+    // inputPeer already resolved above; if not available, we still try to proceed
 
-  // console.log("Context:", llmContext);
+    // Phase 1: Apply reading delay (marks as read and waits)
+    await applyReadingDelay(client, message, inputPeer);
 
-  const composeStartedAt = Date.now();
+    // Phase 2: Apply typing delay (shows typing indicator and waits)
+    await applyTypingDelay(client, message, inputPeer);
 
-  // Contact supervisor if needed (based on mode: disabled/always/wake-up)
-  if (supervisorMode !== 'disabled' && needsSupervisorContact) {
-    const isAlwaysMode = supervisorMode === 'always';
-    const overrideHandled = await attemptHumanOverride({
+    // Phase 3: Send reply using unified message sending function
+    await sendMessageWithFallback({
       client,
       message,
       inputPeer,
+      replyText,
       senderIdString,
       chatId,
-      conversationKey,
-      personaRecord,
-      llmContext,
-      messageText: (messageText ?? "").toString(),
-      isAlwaysMode,
       startedAt: composeStartedAt,
+      personaRecord,
     });
-    if (overrideHandled) {
-      return;
+    // TODO: Add logic to delete or end chat in some cases
+  } catch (error) {
+    // Critical error handler: log comprehensive error details and continue bot operation
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Extract context information safely
+    let senderInfo = "unknown";
+    let messagePreview = "unavailable";
+    
+    try {
+      const message = event?.message;
+      const senderId = (message?.fromId as any)?.userId;
+      if (senderId) {
+        senderInfo = senderId.toString();
+      }
+      
+      const messageText = message?.message;
+      if (messageText) {
+        messagePreview = messageText.length > 100
+          ? `${messageText.substring(0, 100)}...`
+          : messageText;
+      }
+    } catch (extractError) {
+      // If we can't extract context, continue with defaults
     }
+    
+    // Log comprehensive error information
+    console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.error("❌ CRITICAL ERROR in messageHandler");
+    console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.error(`Sender ID: ${senderInfo}`);
+    console.error(`Message Preview: "${messagePreview}"`);
+    console.error(`Error: ${errorMessage}`);
+    if (errorStack) {
+      console.error(`Stack Trace:\n${errorStack}`);
+    }
+    console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.error("Bot continues running...");
+    console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    
+    // Bot continues running - error is caught and logged but doesn't crash the process
   }
-
-  const replyText = await getResponse(llmContext) || "Ttyl xoxo";
-
-  // inputPeer already resolved above; if not available, we still try to proceed
-
-  // Phase 1: Apply reading delay (marks as read and waits)
-  await applyReadingDelay(client, message, inputPeer);
-
-  // Phase 2: Apply typing delay (shows typing indicator and waits)
-  await applyTypingDelay(client, message, inputPeer);
-
-  // Phase 3: Send reply using unified message sending function
-  await sendMessageWithFallback({
-    client,
-    message,
-    inputPeer,
-    replyText,
-    senderIdString,
-    chatId,
-    startedAt: composeStartedAt,
-    personaRecord,
-  });
-  // TODO: Add logic to delete or end chat in some cases
 }

@@ -1,4 +1,5 @@
-import fs from 'fs';
+import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import type { TelegramAccount, SupervisorConfig, MessageDelaysConfig } from './config';
 
@@ -29,8 +30,9 @@ export type PersistedState = {
 function stateFilePath(): string {
   const dir = path.join(process.cwd(), 'data');
   try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    // Use sync version for directory check since this is called synchronously
+    if (!fsSync.existsSync(dir)) {
+      fsSync.mkdirSync(dir, { recursive: true });
     }
   } catch (e) {
     // If directory creation fails, fallback to project root file
@@ -39,19 +41,23 @@ function stateFilePath(): string {
   return path.join(dir, 'config.json');
 }
 
-export function loadPersistedState(): PersistedState {
+export async function loadPersistedState(): Promise<PersistedState> {
   const file = stateFilePath();
   try {
-    if (!fs.existsSync(file)) {
-      // Create an empty config file on first run for smoother setup
+    // Check if file exists using async stat
+    try {
+      await fs.access(file);
+    } catch {
+      // File doesn't exist, create an empty config file on first run for smoother setup
       try {
-        fs.writeFileSync(file, JSON.stringify({}, null, 2), 'utf-8');
+        await fs.writeFile(file, JSON.stringify({}, null, 2), 'utf-8');
       } catch {
         // Ignore write errors here; subsequent saves will try again
       }
       return {};
     }
-    const raw = fs.readFileSync(file, 'utf-8');
+    
+    const raw = await fs.readFile(file, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return {};
     return parsed as PersistedState;
@@ -61,20 +67,23 @@ export function loadPersistedState(): PersistedState {
   }
 }
 
-export function savePersistedState(partial: PersistedState): void {
+export async function savePersistedState(partial: PersistedState): Promise<void> {
   const file = stateFilePath();
   try {
     let current: PersistedState = {};
-    if (fs.existsSync(file)) {
-      try {
-        const raw = fs.readFileSync(file, 'utf-8');
-        current = JSON.parse(raw) || {};
-      } catch {
-        current = {};
-      }
+    
+    // Check if file exists and read current state
+    try {
+      await fs.access(file);
+      const raw = await fs.readFile(file, 'utf-8');
+      current = JSON.parse(raw) || {};
+    } catch {
+      // File doesn't exist or couldn't be read, start with empty state
+      current = {};
     }
+    
     const next = { ...current, ...partial } as PersistedState;
-    fs.writeFileSync(file, JSON.stringify(next, null, 2), 'utf-8');
+    await fs.writeFile(file, JSON.stringify(next, null, 2), 'utf-8');
   } catch (e) {
     console.warn('Failed to save persisted state:', (e as any)?.message || e);
   }

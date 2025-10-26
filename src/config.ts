@@ -25,6 +25,20 @@ export interface HistoryCacheConfig {
   maxCachedChats: number;
 }
 
+export interface AppConfig {
+  systemPrompt: string;
+  currentPersona: string;
+  llmProvider: "pollinations" | "openrouter";
+  openrouterModel: string;
+  openrouterApiKey: string;
+  telegramAccounts: TelegramAccount[];
+  activeAccountId: string | null;
+  humanEscalationChatId: string;
+  supervisor: SupervisorConfig;
+  messageDelays: MessageDelaysConfig;
+  historyCache: HistoryCacheConfig;
+}
+
 export interface TelegramAccount {
   id: string;
   label: string;
@@ -53,21 +67,21 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-const config = {
+const config: AppConfig = {
   systemPrompt: JSON.stringify(granny),
   // Track currently selected persona filename for dashboard persistence
   currentPersona: "granny.json",
   // LLM provider configuration (persisted; defaults used on first run)
-  llmProvider: "openrouter" as "pollinations" | "openrouter",
+  llmProvider: "openrouter",
   openrouterModel: "google/gemini-2.0-flash-001",
   // Secret managed via dashboard and persisted locally
   openrouterApiKey: "",
-  telegramAccounts: [] as TelegramAccount[],
-  activeAccountId: null as string | null,
+  telegramAccounts: [],
+  activeAccountId: null,
   // DEPRECATED: Use supervisor.contact instead. Kept for backward compatibility during migration.
   humanEscalationChatId: "",
   supervisor: {
-    mode: 'wake-up' as SupervisorMode,
+    mode: 'wake-up',
     contact: '',
     wakeUpDelayMs: {
       min: envNumber("WAKE_UP_DELAY_MS_MIN", 5_000),
@@ -78,7 +92,7 @@ const config = {
       max: envNumber("ALWAYS_FALLBACK_DELAY_MS_MAX", 60_000),
     },
     sleepThresholdMs: envNumber("SLEEP_THRESHOLD_MS", 300_000),
-  } as SupervisorConfig,
+  },
   messageDelays: {
     waitBeforeTypingMs: {
       min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5_000),
@@ -89,14 +103,14 @@ const config = {
       max: envNumber("TYPING_DURATION_MS_MAX", 10_000),
     },
     typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
-  } as MessageDelaysConfig,
+  },
   historyCache: {
     maxMessagesPerChat: envNumber("MAX_MESSAGES_PER_CHAT", 500),
     maxCachedChats: envNumber("MAX_CACHED_CHATS", 100),
-  } as HistoryCacheConfig,
+  },
 };
 
-export const appConfig = () => config;
+export const appConfig = (): AppConfig => config;
 
 function cloneAccount(account: TelegramAccount): TelegramAccount {
   return { ...account };
@@ -148,6 +162,8 @@ function persistConfig(): void {
   console.log("Config Updated");
   try {
     const { savePersistedState } = require("./persistence");
+    // Call async function without awaiting - fire and forget
+    // This maintains backward compatibility with synchronous callers
     savePersistedState({
       currentPersona: (config as any).currentPersona,
       llmProvider: (config as any).llmProvider,
@@ -160,6 +176,8 @@ function persistConfig(): void {
       supervisor: config.supervisor,
       messageDelays: config.messageDelays,
       historyCache: config.historyCache,
+    }).catch((e: any) => {
+      console.warn("Failed to persist config:", e?.message || e);
     });
   } catch (e) {
     console.warn("Failed to persist config:", (e as any)?.message || e);

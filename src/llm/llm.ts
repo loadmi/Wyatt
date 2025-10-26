@@ -3,6 +3,40 @@ import { recordLLMRequest } from "../metrics";
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
+// Default timeout for LLM API calls (30 seconds)
+const DEFAULT_LLM_TIMEOUT_MS = 30000;
+
+/**
+ * Fetch with timeout support using AbortController
+ * @param url - The URL to fetch
+ * @param options - Fetch options
+ * @param timeoutMs - Timeout in milliseconds (default: 30000)
+ * @returns Promise with response
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as any)?.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 function getInputLimits() {
   const mi = Number(process.env.LLM_MAX_INPUT_CHARS);
   const ms = Number(process.env.LLM_MAX_SYSTEM_CHARS);
@@ -151,11 +185,11 @@ function trimMessagesToLimit(
 async function callPollinations(messages: ChatMessage[]): Promise<{ ok: boolean; status: number; text: string }> {
   const ENDPOINT = 'https://text.pollinations.ai/';
   try {
-    const resp = await fetch(ENDPOINT, {
+    const resp = await fetchWithTimeout(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, model: 'openai-fast' }),
-    });
+    }, DEFAULT_LLM_TIMEOUT_MS);
     const text = await resp.text();
     const isJsonErr = looksLikeJsonError(text);
     if (!resp.ok || isJsonErr) {
@@ -163,7 +197,8 @@ async function callPollinations(messages: ChatMessage[]): Promise<{ ok: boolean;
     }
     return { ok: resp.ok && !isJsonErr, status: resp.status, text };
   } catch (e) {
-    console.warn(`[LLM] Pollinations error: ${(e as any)?.message || e}`);
+    const errorMsg = (e as any)?.message || e;
+    console.warn(`[LLM] Pollinations error: ${errorMsg}`);
     return { ok: false, status: 0, text: '' };
   }
 }
@@ -176,7 +211,7 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
     return { ok: false, status: 0, text: '' };
   }
   try {
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const resp = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -186,7 +221,7 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
         model: model || 'google/gemini-2.0-flash-001',
         messages,
       }),
-    });
+    }, DEFAULT_LLM_TIMEOUT_MS);
 
     const textBody = await resp.text();
     if (!resp.ok) {
@@ -206,7 +241,8 @@ async function callOpenRouter(messages: ChatMessage[], model: string): Promise<{
       return { ok: false, status: resp.status, text: '' };
     }
   } catch (e) {
-    console.warn(`[LLM] OpenRouter error: ${(e as any)?.message || e}`);
+    const errorMsg = (e as any)?.message || e;
+    console.warn(`[LLM] OpenRouter error: ${errorMsg}`);
     return { ok: false, status: 0, text: '' };
   }
 }
