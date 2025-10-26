@@ -447,10 +447,18 @@ export function startWebServer(): void {
   app.post("/api/config/accounts", strictLimiter, (req: Request, res: Response) => {
     const { label, apiId, apiHash, sessionString } = req.body || {};
     try {
+      let processedApiHash: string;
+      if (typeof apiHash === "string") {
+        processedApiHash = apiHash;
+      } else if (apiHash == null) {
+        processedApiHash = "";
+      } else {
+        processedApiHash = String(apiHash);
+      }
       const account = addTelegramAccount({
         label: typeof label === "string" ? label : String(label ?? ""),
         apiId: typeof apiId === "number" ? apiId : Number(apiId),
-        apiHash: typeof apiHash === "string" ? apiHash : (apiHash == null ? "" : String(apiHash)),
+        apiHash: processedApiHash,
         sessionString: (() => {
           if (typeof sessionString === "string") {
             return sessionString;
@@ -483,7 +491,15 @@ export function startWebServer(): void {
       patch.apiId = typeof apiId === "number" ? apiId : Number(apiId);
     }
     if (apiHash !== undefined) {
-      patch.apiHash = typeof apiHash === "string" ? apiHash : (apiHash == null ? "" : String(apiHash));
+      let processedApiHash: string;
+      if (typeof apiHash === "string") {
+        processedApiHash = apiHash;
+      } else if (apiHash == null) {
+        processedApiHash = "";
+      } else {
+        processedApiHash = String(apiHash);
+      }
+      patch.apiHash = processedApiHash;
     }
     if (sessionString !== undefined) {
       if (typeof sessionString === "string") {
