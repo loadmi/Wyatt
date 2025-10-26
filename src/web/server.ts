@@ -165,7 +165,7 @@ export function startWebServer(): void {
         updates.telegramAccounts = persisted.telegramAccounts;
       }
 
-      if (Object.prototype.hasOwnProperty.call(persisted, "activeAccountId")) {
+      if (Object.hasOwn(persisted, "activeAccountId")) {
         updates.activeAccountId = persisted.activeAccountId ?? null;
       }
 
@@ -304,10 +304,10 @@ export function startWebServer(): void {
     let text: string;
     if (typeof message === "string") {
       text = message;
-    } else if (message != null) {
-      text = String(message);
-    } else {
+    } else if (message == null) {
       text = "";
+    } else {
+      text = String(message);
     }
     if (!text.trim()) {
       return res.status(400).json({ success: false, message: "Message text is required." });
@@ -339,10 +339,10 @@ export function startWebServer(): void {
     let personaId: string;
     if (typeof personaRaw === "string") {
       personaId = personaRaw.trim();
-    } else if (personaRaw != null) {
-      personaId = String(personaRaw).trim();
-    } else {
+    } else if (personaRaw == null) {
       personaId = "";
+    } else {
+      personaId = String(personaRaw).trim();
     }
     if (!personaId) {
       return res.status(400).json({ success: false, message: "Persona identifier is required." });
@@ -451,14 +451,14 @@ export function startWebServer(): void {
       const account = addTelegramAccount({
         label: typeof label === "string" ? label : String(label ?? ""),
         apiId: typeof apiId === "number" ? apiId : Number(apiId),
-        apiHash: typeof apiHash === "string" ? apiHash : (apiHash != null ? String(apiHash) : ""),
+        apiHash: typeof apiHash === "string" ? apiHash : (apiHash == null ? "" : String(apiHash)),
         sessionString: (() => {
           if (typeof sessionString === "string") {
             return sessionString;
-          } else if (sessionString != null) {
-            return String(sessionString);
-          } else {
+          } else if (sessionString == null) {
             return undefined;
+          } else {
+            return String(sessionString);
           }
         })(),
       });
@@ -484,15 +484,15 @@ export function startWebServer(): void {
       patch.apiId = typeof apiId === "number" ? apiId : Number(apiId);
     }
     if (apiHash !== undefined) {
-      patch.apiHash = typeof apiHash === "string" ? apiHash : (apiHash != null ? String(apiHash) : "");
+      patch.apiHash = typeof apiHash === "string" ? apiHash : (apiHash == null ? "" : String(apiHash));
     }
     if (sessionString !== undefined) {
       if (typeof sessionString === "string") {
         patch.sessionString = sessionString;
-      } else if (sessionString != null) {
-        patch.sessionString = String(sessionString);
-      } else {
+      } else if (sessionString == null) {
         patch.sessionString = "";
+      } else {
+        patch.sessionString = String(sessionString);
       }
     }
 

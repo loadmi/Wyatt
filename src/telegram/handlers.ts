@@ -280,7 +280,7 @@ function getSupervisorFallbackDelay(): number {
   
   // Default to wake-up delays for 'wake-up' mode or fallback
   const delays = cfg?.supervisor?.wakeUpDelayMs || {
-    min: 5_000,
+    min: 5000,
     max: 10_000
   };
   return randomInRange(delays.min, delays.max);

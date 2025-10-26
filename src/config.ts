@@ -84,7 +84,7 @@ const config: AppConfig = {
     mode: 'wake-up',
     contact: '',
     wakeUpDelayMs: {
-      min: envNumber("WAKE_UP_DELAY_MS_MIN", 5_000),
+      min: envNumber("WAKE_UP_DELAY_MS_MIN", 5000),
       max: envNumber("WAKE_UP_DELAY_MS_MAX", 10_000),
     },
     alwaysFallbackDelayMs: {
@@ -95,14 +95,14 @@ const config: AppConfig = {
   },
   messageDelays: {
     waitBeforeTypingMs: {
-      min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5_000),
+      min: envNumber("WAIT_BEFORE_TYPING_MS_MIN", 5000),
       max: envNumber("WAIT_BEFORE_TYPING_MS_MAX", 10_000),
     },
     typingDurationMs: {
-      min: envNumber("TYPING_DURATION_MS_MIN", 5_000),
+      min: envNumber("TYPING_DURATION_MS_MIN", 5000),
       max: envNumber("TYPING_DURATION_MS_MAX", 10_000),
     },
-    typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4_000),
+    typingKeepaliveMs: envNumber("TYPING_KEEPALIVE_MS", 4000),
   },
   historyCache: {
     maxMessagesPerChat: envNumber("MAX_MESSAGES_PER_CHAT", 500),
@@ -216,7 +216,7 @@ export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>):
   if (supervisor.wakeUpDelayMs !== undefined) {
     const { min, max } = supervisor.wakeUpDelayMs;
     if (typeof min !== 'number' || typeof max !== 'number') {
-      throw new Error('wakeUpDelayMs min and max must be numbers');
+      throw new TypeError('wakeUpDelayMs min and max must be numbers');
     }
     if (min < 0 || max < 0) {
       throw new Error('wakeUpDelayMs min and max must be non-negative');
@@ -230,7 +230,7 @@ export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>):
   if (supervisor.alwaysFallbackDelayMs !== undefined) {
     const { min, max } = supervisor.alwaysFallbackDelayMs;
     if (typeof min !== 'number' || typeof max !== 'number') {
-      throw new Error('alwaysFallbackDelayMs min and max must be numbers');
+      throw new TypeError('alwaysFallbackDelayMs min and max must be numbers');
     }
     if (min < 0 || max < 0) {
       throw new Error('alwaysFallbackDelayMs min and max must be non-negative');
@@ -243,7 +243,7 @@ export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>):
   // Validate sleepThresholdMs
   if (supervisor.sleepThresholdMs !== undefined) {
     if (typeof supervisor.sleepThresholdMs !== 'number') {
-      throw new Error('sleepThresholdMs must be a number');
+      throw new TypeError('sleepThresholdMs must be a number');
     }
     if (supervisor.sleepThresholdMs < 0) {
       throw new Error('sleepThresholdMs must be non-negative');
@@ -252,7 +252,7 @@ export function validateSupervisorConfig(supervisor: Partial<SupervisorConfig>):
 }
 
 export function setConfig(newConfig: Partial<typeof config>): void {
-  if (Object.prototype.hasOwnProperty.call(newConfig, "telegramAccounts")) {
+  if (Object.hasOwn(newConfig, "telegramAccounts")) {
     const rawAccounts = newConfig.telegramAccounts;
     if (Array.isArray(rawAccounts)) {
       const sanitized = rawAccounts
@@ -267,7 +267,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(newConfig, "activeAccountId")) {
+  if (Object.hasOwn(newConfig, "activeAccountId")) {
     const idRaw = newConfig.activeAccountId;
     if (typeof idRaw === "string" && idRaw.trim()) {
       config.activeAccountId = idRaw.trim();
@@ -276,7 +276,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(newConfig, "humanEscalationChatId")) {
+  if (Object.hasOwn(newConfig, "humanEscalationChatId")) {
     const raw = newConfig.humanEscalationChatId;
     if (typeof raw === "string") {
       config.humanEscalationChatId = raw.trim();
@@ -298,7 +298,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   // Handle supervisor config updates
-  if (Object.prototype.hasOwnProperty.call(newConfig, "supervisor")) {
+  if (Object.hasOwn(newConfig, "supervisor")) {
     const supervisorUpdate = newConfig.supervisor;
     if (supervisorUpdate && typeof supervisorUpdate === 'object') {
       // Validate before applying
@@ -329,7 +329,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   // Handle messageDelays config updates
-  if (Object.prototype.hasOwnProperty.call(newConfig, "messageDelays")) {
+  if (Object.hasOwn(newConfig, "messageDelays")) {
     const messageDelaysUpdate = newConfig.messageDelays;
     if (messageDelaysUpdate && typeof messageDelaysUpdate === 'object') {
       if (messageDelaysUpdate.waitBeforeTypingMs !== undefined) {
@@ -345,7 +345,7 @@ export function setConfig(newConfig: Partial<typeof config>): void {
   }
 
   // Handle historyCache config updates
-  if (Object.prototype.hasOwnProperty.call(newConfig, "historyCache")) {
+  if (Object.hasOwn(newConfig, "historyCache")) {
     const historyCacheUpdate = newConfig.historyCache;
     if (historyCacheUpdate && typeof historyCacheUpdate === 'object') {
       if (historyCacheUpdate.maxMessagesPerChat !== undefined) {
@@ -391,7 +391,7 @@ function coerceLabel(label: string | undefined): string {
 export function addTelegramAccount(input: TelegramAccountInput): TelegramAccount {
   const apiIdNumber = Number(input.apiId);
   if (!Number.isFinite(apiIdNumber)) {
-    throw new Error("API ID must be a number");
+    throw new TypeError("API ID must be a number");
   }
 
   const apiHash = (input.apiHash ?? "").trim();
@@ -444,7 +444,7 @@ export function updateTelegramAccount(
   if (patch.apiId !== undefined) {
     const apiIdNumber = Number(patch.apiId);
     if (!Number.isFinite(apiIdNumber)) {
-      throw new Error("API ID must be a number");
+      throw new TypeError("API ID must be a number");
     }
     updated.apiId = Math.trunc(apiIdNumber);
   }

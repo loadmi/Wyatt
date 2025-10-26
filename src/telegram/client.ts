@@ -88,7 +88,7 @@ function requireActiveAccount(): TelegramAccount {
   }
 
   if (!Number.isFinite(account.apiId)) {
-    throw new Error(`Active account "${account.label}" is missing a valid API ID.`);
+    throw new TypeError(`Active account "${account.label}" is missing a valid API ID.`);
   }
 
   const apiHash = account.apiHash?.trim();
