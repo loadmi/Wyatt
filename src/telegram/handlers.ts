@@ -151,23 +151,23 @@ type InteractionRecord = {
 
 // Load persisted interaction tracker data
 async function loadInteractionTracker(): Promise<Map<string, InteractionRecord>> {
-   try {
-     const { loadPersistedState } = require("../persistence");
-     const persisted = await loadPersistedState();
-     const tracker = new Map<string, InteractionRecord>();
+    try {
+      const { loadPersistedState } = require("../persistence");
+      const persisted = await loadPersistedState();
+      const tracker = new Map<string, InteractionRecord>();
 
-     if (persisted.interactionTracker) {
-       for (const [key, record] of Object.entries(persisted.interactionTracker)) {
-         tracker.set(key, record as InteractionRecord);
-       }
-     }
+      if (persisted.interactionTracker) {
+        for (const [key, record] of Object.entries(persisted.interactionTracker)) {
+          tracker.set(key, record as InteractionRecord);
+        }
+      }
 
-     return tracker;
-   } catch (e) {
-     console.warn("Failed to load interaction tracker:", (e as any)?.message || e);
-     return new Map<string, InteractionRecord>();
-   }
- }
+      return tracker;
+    } catch (e) {
+      console.warn("Failed to load interaction tracker:", (e as any)?.message || e);
+      return new Map<string, InteractionRecord>();
+    }
+  }
 
 // Initialize interaction tracker asynchronously
 const interactionTracker = new Map<string, InteractionRecord>();
@@ -176,7 +176,7 @@ loadInteractionTracker().then(tracker => {
     interactionTracker.set(key, value);
   }
 }).catch(e => {
-  console.warn("Failed to initialize interaction tracker:", e?.message || e);
+  console.warn("Failed to initialize interaction tracker:", (e as any)?.message || e);
 });
 
 // Helper function to get cache key for interaction tracking
@@ -201,20 +201,20 @@ function shouldWakeUp(senderId: string, chatId: string | undefined): boolean {
 
 // Helper function to save interaction tracker to persistence
 function saveInteractionTracker(): void {
-   try {
-     const { savePersistedState } = require("../persistence");
-     const data: Record<string, InteractionRecord> = {};
-     for (const [key, record] of interactionTracker.entries()) {
-       data[key] = record;
-     }
-     // Call async function without awaiting - fire and forget
-     savePersistedState({ interactionTracker: data }).catch((e: any) => {
-       console.warn("Failed to save interaction tracker:", e?.message || e);
-     });
-   } catch (e) {
-     console.warn("Failed to save interaction tracker:", (e as any)?.message || e);
-   }
- }
+    try {
+      const { savePersistedState } = require("../persistence");
+      const data: Record<string, InteractionRecord> = {};
+      for (const [key, record] of interactionTracker.entries()) {
+        data[key] = record;
+      }
+      // Call async function without awaiting - fire and forget
+      savePersistedState({ interactionTracker: data }).catch((e: any) => {
+        console.warn("Failed to save interaction tracker:", e?.message || e);
+      });
+    } catch (e) {
+      console.warn("Failed to save interaction tracker:", (e as any)?.message || e);
+    }
+  }
 
 // Helper function to update last interaction time
 function updateLastInteraction(senderId: string, chatId: string | undefined): void {
@@ -947,7 +947,7 @@ async function attemptHumanOverride(params: {
   const contactInfo = senderName
     ? `${senderName} (\`${senderIdString}\`)`
     : `\`${senderIdString}\``;
-  
+
   // Build notification with context sections
   const notificationParts = [
     `🔔 **SUPERVISOR REQUEST** (${modeLabel.toUpperCase()} MODE)`,
