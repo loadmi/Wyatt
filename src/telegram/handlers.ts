@@ -542,6 +542,35 @@ async function sendImmediateReply(params: {
   return false;
 }
 
+async function getSenderDisplayName(message: any): Promise<string> {
+  try {
+    const sender = await message.getSender?.();
+    if (!sender) return "";
+    
+    const parts: string[] = [];
+    if (typeof sender.firstName === "string" && sender.firstName.trim()) {
+      parts.push(sender.firstName.trim());
+    }
+    if (typeof sender.lastName === "string" && sender.lastName.trim()) {
+      parts.push(sender.lastName.trim());
+    }
+    
+    const fullName = parts.join(" ");
+    if (fullName) return fullName;
+    
+    if (typeof sender.username === "string" && sender.username.trim()) {
+      return `@${sender.username.trim()}`;
+    }
+    
+    if (typeof sender.title === "string" && sender.title.trim()) {
+      return sender.title.trim();
+    }
+  } catch (error) {
+    // Silently fail if we can't get sender info
+  }
+  return "";
+}
+
 async function attemptHumanOverride(params: {
   client: any;
   message: any;
@@ -570,6 +599,9 @@ async function attemptHumanOverride(params: {
   } = params;
 
   console.log(`🤖 Bot waking up after inactivity (${Math.max(1, Math.round(wakeUpDelay / 1000))}s delay)...`);
+  
+  // Get sender's display name
+  const senderName = await getSenderDisplayName(message);
 
   const target = getConfiguredHumanTarget();
   if (!target) {
@@ -615,10 +647,15 @@ async function attemptHumanOverride(params: {
     return `${emoji} **Option ${idx + 1}**\n   ${entry}`;
   }).join("\n\n");
   
+  // Format contact info with name if available
+  const contactInfo = senderName
+    ? `${senderName} (\`${senderIdString}\`)`
+    : `\`${senderIdString}\``;
+  
   const notification = [
     `🔔 **WAKE-UP REQUEST**`,
     ``,
-    `👤 Contact: \`${senderIdString}\`${chatId ? ` · Chat ${chatId}` : ""}`,
+    `👤 Contact: ${contactInfo}${chatId ? ` · Chat ${chatId}` : ""}`,
     `💬 Message: "${truncatedMessage}"`,
     ``,
     `━━━━━━━━━━━━━━━━`,
