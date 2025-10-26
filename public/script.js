@@ -22,7 +22,7 @@ function withAlpha(color, alpha) {
         if (hex.length === 3) {
             hex = hex.split('').map(ch => ch + ch).join('');
         }
-        const num = parseInt(hex, 16);
+        const num = Number.parseInt(hex, 16);
         if (!Number.isNaN(num)) {
             const r = (num >> 16) & 255;
             const g = (num >> 8) & 255;
@@ -711,8 +711,8 @@ class BotController {
         
         // Add wake-up delays (convert seconds to ms)
         if (this.wakeUpDelayMin && this.wakeUpDelayMax) {
-            const min = parseFloat(this.wakeUpDelayMin.value) * 1000;
-            const max = parseFloat(this.wakeUpDelayMax.value) * 1000;
+            const min = Number.parseFloat(this.wakeUpDelayMin.value) * 1000;
+            const max = Number.parseFloat(this.wakeUpDelayMax.value) * 1000;
             if (min > max) {
                 if (this.supervisorStatus) {
                     this.supervisorStatus.textContent = 'Wake-up min delay must be ≤ max delay';
@@ -732,8 +732,8 @@ class BotController {
         
         // Add always delays (convert seconds to ms)
         if (this.alwaysDelayMin && this.alwaysDelayMax) {
-            const min = parseFloat(this.alwaysDelayMin.value) * 1000;
-            const max = parseFloat(this.alwaysDelayMax.value) * 1000;
+            const min = Number.parseFloat(this.alwaysDelayMin.value) * 1000;
+            const max = Number.parseFloat(this.alwaysDelayMax.value) * 1000;
             if (min > max) {
                 if (this.supervisorStatus) {
                     this.supervisorStatus.textContent = 'Always min delay must be ≤ max delay';
@@ -753,7 +753,7 @@ class BotController {
         
         // Add sleep threshold (convert seconds to ms)
         if (this.sleepThresholdInput) {
-            payload.sleepThresholdMs = parseFloat(this.sleepThresholdInput.value) * 1000;
+            payload.sleepThresholdMs = Number.parseFloat(this.sleepThresholdInput.value) * 1000;
         }
         
         // Show saving status
@@ -875,8 +875,8 @@ class BotController {
     async saveMessageDelaysConfig() {
         // Validate reading delay
         if (this.readingDelayMin && this.readingDelayMax) {
-            const min = parseFloat(this.readingDelayMin.value);
-            const max = parseFloat(this.readingDelayMax.value);
+            const min = Number.parseFloat(this.readingDelayMin.value);
+            const max = Number.parseFloat(this.readingDelayMax.value);
             if (min > max) {
                 if (this.messageDelaysStatus) {
                     this.messageDelaysStatus.textContent = 'Reading delay min must be ≤ max';
@@ -895,8 +895,8 @@ class BotController {
         
         // Validate typing duration
         if (this.typingDurationMin && this.typingDurationMax) {
-            const min = parseFloat(this.typingDurationMin.value);
-            const max = parseFloat(this.typingDurationMax.value);
+            const min = Number.parseFloat(this.typingDurationMin.value);
+            const max = Number.parseFloat(this.typingDurationMax.value);
             if (min > max) {
                 if (this.messageDelaysStatus) {
                     this.messageDelaysStatus.textContent = 'Typing duration min must be ≤ max';
@@ -915,7 +915,7 @@ class BotController {
         
         // Validate typing keepalive
         if (this.typingKeepaliveInput) {
-            const keepalive = parseFloat(this.typingKeepaliveInput.value);
+            const keepalive = Number.parseFloat(this.typingKeepaliveInput.value);
             if (keepalive >= 5) {
                 if (this.messageDelaysStatus) {
                     this.messageDelaysStatus.textContent = 'Typing keepalive must be < 5 seconds';
@@ -937,20 +937,20 @@ class BotController {
         
         if (this.readingDelayMin && this.readingDelayMax) {
             payload.waitBeforeTypingMs = {
-                min: parseFloat(this.readingDelayMin.value) * 1000,
-                max: parseFloat(this.readingDelayMax.value) * 1000
+                min: Number.parseFloat(this.readingDelayMin.value) * 1000,
+                max: Number.parseFloat(this.readingDelayMax.value) * 1000
             };
         }
         
         if (this.typingDurationMin && this.typingDurationMax) {
             payload.typingDurationMs = {
-                min: parseFloat(this.typingDurationMin.value) * 1000,
-                max: parseFloat(this.typingDurationMax.value) * 1000
+                min: Number.parseFloat(this.typingDurationMin.value) * 1000,
+                max: Number.parseFloat(this.typingDurationMax.value) * 1000
             };
         }
         
         if (this.typingKeepaliveInput) {
-            payload.typingKeepaliveMs = parseFloat(this.typingKeepaliveInput.value) * 1000;
+            payload.typingKeepaliveMs = Number.parseFloat(this.typingKeepaliveInput.value) * 1000;
         }
         
         // Show saving status
@@ -2797,7 +2797,9 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(theme);
 
     const controller = new BotController();
-    new TabController(controller);
+    const tabController = new TabController(controller);
+    // You can now use tabController if needed, for example:
+    // tabController.doSomething();
 
     if (toggle) {
         toggle.checked = theme === 'dark';

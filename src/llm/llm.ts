@@ -61,7 +61,7 @@ function looksLikeJsonError(text: string): boolean {
 }
 
 function preview(text: string, max = 180): string {
-  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  const clean = (text || '').replaceAll(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max) + '…';
 }
@@ -75,7 +75,7 @@ const SUGGESTION_FALLBACKS = [
 ];
 
 function sanitizeSuggestion(text: string): string {
-  return (text || '').replace(/\s+/g, ' ').trim();
+  return (text || '').replaceAll(/\s+/g, ' ').trim();
 }
 
 function parseSuggestions(raw: string, limit: number): Array<{text: string, emotion: string}> {
