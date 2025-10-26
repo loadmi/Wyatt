@@ -176,7 +176,7 @@ loadInteractionTracker().then(tracker => {
     interactionTracker.set(key, value);
   }
 }).catch(e => {
-  console.warn("Failed to initialize interaction tracker:", (e as any)?.message || e);
+  console.warn("Failed to initialize interaction tracker:", e?.message || e);
 });
 
 // Helper function to get cache key for interaction tracking
