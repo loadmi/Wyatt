@@ -150,6 +150,9 @@ function toIdStringSafe(x: any): string | null {
   try {
     if (x === null || x === undefined) return null;
     if (typeof x === "string" || typeof x === "number" || typeof x === "bigint") return String(x);
+    // Prefer explicit peer identifiers first so groups/channels use numeric IDs
+    if (x?.channelId !== undefined) return toIdStringSafe(x.channelId);
+    if (x?.chatId !== undefined) return toIdStringSafe(x.chatId);
     if (x?.userId !== undefined) return toIdStringSafe(x.userId);
     if (x?.id !== undefined) return toIdStringSafe(x.id);
     if (x?.value !== undefined) return toIdStringSafe(x.value);

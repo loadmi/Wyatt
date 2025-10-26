@@ -369,6 +369,22 @@ function toDialogKey(raw: any): string | null {
   return null;
 }
 
+// Prefer stable, Telegram-native numeric IDs for chats/groups/channels
+// so that server APIs and runtime handlers use the same keys.
+function toStableChatKey(entity: any, dialog?: any): string | null {
+  try {
+    // Prefer explicit fields first
+    if (entity?.userId !== undefined && entity?.userId !== null) return toDialogKey(entity.userId);
+    if (entity?.channelId !== undefined && entity?.channelId !== null) return toDialogKey(entity.channelId);
+    if (entity?.chatId !== undefined && entity?.chatId !== null) return toDialogKey(entity.chatId);
+    // Fall back to entity.id, which for Users/Chats/Channels is typically numeric
+    if (entity?.id !== undefined && entity?.id !== null) return toDialogKey(entity.id);
+    // As a last resort, consider dialog.id if present
+    if (dialog?.id !== undefined && dialog?.id !== null) return toDialogKey(dialog.id);
+  } catch { }
+  return null;
+}
+
 function resolveDialogType(dialog: any, entity: any): ChatCacheEntry["type"] {
   if (dialog?.isUser) return "private";
   if (dialog?.isGroup) return "group";
@@ -516,7 +532,8 @@ export async function listChats(): Promise<DashboardChatSummary[]> {
     const entity: any = (dialog as any)?.entity;
     if (!entity) continue;
 
-    const key = toDialogKey((dialog as any).id ?? entity?.id ?? entity?.userId ?? entity?.channelId ?? entity?.chatId);
+    // Use a stable key that matches runtime handler conversation keys
+    const key = toStableChatKey(entity, dialog);
     if (!key) continue;
 
     let inputPeer: any;

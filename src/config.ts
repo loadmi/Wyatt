@@ -50,8 +50,8 @@ const config = {
 
   // Wake up routine configuration
   wakeUpDelayMs: {
-    min: envNumber("WAKE_UP_DELAY_MS_MIN", 300_000),
-    max: envNumber("WAKE_UP_DELAY_MS_MAX", 600_000),
+    min: envNumber("WAKE_UP_DELAY_MS_MIN", 1_000),
+    max: envNumber("WAKE_UP_DELAY_MS_MAX", 2_000),
   } as NumRange,
 
   // How long before the bot is considered "asleep" (in milliseconds)
