@@ -374,7 +374,7 @@ function parseHumanResponse(raw: string, suggestions: Array<{text: string, emoti
       if (Number.isFinite(idx) && idx >= 1 && idx <= suggestions.length) {
         const suggestion = suggestions[idx - 1];
         const text = typeof suggestion === 'string' ? suggestion : suggestion.text;
-        if (text && text.trim()) {
+        if (text?.trim()) {
           return { kind: "suggestion", index: idx - 1, text: text.trim() };
         }
       }
@@ -997,8 +997,8 @@ async function attemptHumanOverride(params: {
   let requestMessageId: number | undefined;
   if (typeof sent?.id === "number") {
     requestMessageId = sent.id;
-  } else if (typeof (sent as any)?.message?.id === "number") {
-    requestMessageId = (sent as any).message.id;
+  } else if (typeof sent?.message?.id === "number") {
+    requestMessageId = sent.message.id;
   } else {
     requestMessageId = undefined;
   }
@@ -1155,7 +1155,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
         }
       }
 
-      const last = res.messages[res.messages.length - 1];
+      const last = res.messages.at(-1);
       if (!last || typeof last.id !== "number") break;
       offsetId = last.id;
       // Early termination: exit if we've hit the limit or received fewer messages than requested
@@ -1178,7 +1178,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
   }
 
   // Incremental update: fetch only messages newer than the last cached id
-  const lastKnownId = cached[cached.length - 1]?.id || 0;
+  const lastKnownId = cached.at(-1)?.id || 0;
   let more: ContextEntry[] = [];
   let offsetId = 0;
   let totalFetched = 0;
@@ -1220,7 +1220,7 @@ async function fetchFullHistory(client: any, peer: any, cacheKey: string): Promi
       }
     }
 
-    const last = res.messages[res.messages.length - 1];
+    const last = res.messages.at(-1);
     if (!last || typeof last.id !== "number") break;
     offsetId = last.id;
     // Early termination: exit if we've hit the limit or received fewer messages than requested

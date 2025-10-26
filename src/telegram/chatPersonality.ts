@@ -303,7 +303,7 @@ export function getChatPersonaSystemPromptSync(chatId: string): string | null {
   // We'll need to ensure loadStore is called asynchronously elsewhere before this is used
   // For now, we'll keep the synchronous call but it won't wait for the promise
   loadStore().catch(e => {
-    console.warn("Failed to load store in sync function:", (e as any)?.message || e);
+    console.warn("Failed to load store in sync function:", e?.message || e);
   });
   const key = normaliseChatId(chatId);
   if (!key) return null;

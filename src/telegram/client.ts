@@ -664,7 +664,7 @@ export async function getChatHistory(chatId: string, limit = 150): Promise<Dashb
     console.warn(`Failed to resolve chat persona for history ${chatId}:`, (error as any)?.message || error);
   }
 
-  const lastTimestamp = messages.length > 0 ? messages[messages.length - 1].timestamp : undefined;
+  const lastTimestamp = messages.length > 0 ? messages.at(-1)?.timestamp : undefined;
 
   return {
     chat: {

@@ -191,7 +191,7 @@ export function startWebServer(): void {
       const currentCfg = appConfig() as any;
       const legacyContact = (persisted as any).humanEscalationChatId;
       if (legacyContact && typeof legacyContact === 'string' && legacyContact.trim()) {
-        if (!currentCfg.supervisor?.contact || !currentCfg.supervisor.contact.trim()) {
+        if (!currentCfg.supervisor?.contact?.trim()) {
           console.log("Migrating legacy humanEscalationChatId to supervisor.contact");
           setConfig({
             supervisor: { contact: legacyContact.trim() }
@@ -330,7 +330,7 @@ export function startWebServer(): void {
 
   app.post("/api/chats/:chatId/personality", async (req: Request, res: Response) => {
     const { chatId } = req.params;
-    const personaRaw = (req.body || {}).persona;
+    const personaRaw = req.body?.persona;
 
     if (!chatId) {
       return res.status(400).json({ success: false, message: "Chat ID is required." });
@@ -635,7 +635,7 @@ export function startWebServer(): void {
     const next = (typeof key === 'string' ? key : '').trim();
     setConfig({ openrouterApiKey: next } as any);
     const cfg = appConfig() as any;
-    res.status(201).json({ success: true, hasOpenrouterKey: !!(cfg.openrouterApiKey && cfg.openrouterApiKey.trim()) });
+    res.status(201).json({ success: true, hasOpenrouterKey: !!cfg.openrouterApiKey?.trim() });
   });
 
   // New supervisor configuration endpoints
@@ -857,7 +857,7 @@ export function startWebServer(): void {
     const activeAccount = getActiveTelegramAccount();
     if (!activeAccount) {
       console.log("Auto-start skipped: no active Telegram account configured.");
-    } else if (activeAccount.sessionString && activeAccount.sessionString.trim()) {
+    } else if (activeAccount.sessionString?.trim()) {
       try {
         const result = await startBotNonInteractive();
         if (result.success) {

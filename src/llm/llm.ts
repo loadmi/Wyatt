@@ -268,7 +268,7 @@ export async function requestLLMCompletion(
   options?: { trimForProvider?: boolean; fallback?: string }
 ): Promise<string> {
   const { maxInput, maxSystem } = getInputLimits();
-  const provider = (appConfig().llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  const provider = appConfig().llmProvider || 'pollinations';
   let toSend = messages;
 
   const shouldTrim = options?.trimForProvider !== false && provider === 'pollinations';
@@ -414,7 +414,7 @@ export async function getResponse(messages: ChatMessage[]): Promise<string> {
   ];
   const HARD_FALLBACK = FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)];
 
-  const provider = (appConfig().llmProvider || 'pollinations') as 'pollinations' | 'openrouter';
+  const provider = appConfig().llmProvider || 'pollinations';
   let toSend = messages;
   if (provider === 'pollinations') {
     const origChars = countChars(messages);
