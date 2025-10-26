@@ -184,6 +184,11 @@ class BotController {
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
         this.chatBlendBtn = document.getElementById('chatBlendBtn');
+        this.chatDecoyTemplateSelect = document.getElementById('chatDecoyTemplateSelect');
+        this.chatAttachmentSelect = document.getElementById('chatAttachmentSelect');
+        this.chatGenerateDecoyBtn = document.getElementById('chatGenerateDecoyBtn');
+        this.chatClearAttachmentBtn = document.getElementById('chatClearAttachmentBtn');
+        this.chatAttachmentPreview = document.getElementById('chatAttachmentPreview');
         this.chatPanel = document.querySelector('.chat-panel');
         this.chatSidebar = document.querySelector('.chat-sidebar');
         this.chatToggleSidebarBtn = document.getElementById('chatToggleSidebar');
@@ -238,7 +243,14 @@ class BotController {
             rabbit: { interval: 2000, listEvery: 5 },
         };
         this.chatRefreshSpeed = this.loadChatRefreshSpeed();
-        
+
+        // Decoy attachment state
+        this.decoyTemplates = [];
+        this.decoyArtifacts = [];
+        this.selectedDecoyTemplateId = '';
+        this.selectedDecoyAttachmentId = null;
+        this.decoyGenerationBusy = false;
+
         // Persona state
         this.availablePersonas = [];
         this.globalPersonaId = null;
@@ -330,6 +342,18 @@ class BotController {
         if (this.chatPersonaResetBtn) {
             this.chatPersonaResetBtn.addEventListener('click', () => this.resetActiveChatPersona());
         }
+        if (this.chatDecoyTemplateSelect) {
+            this.chatDecoyTemplateSelect.addEventListener('change', () => this.handleDecoyTemplateChange());
+        }
+        if (this.chatAttachmentSelect) {
+            this.chatAttachmentSelect.addEventListener('change', () => this.handleAttachmentSelection());
+        }
+        if (this.chatGenerateDecoyBtn) {
+            this.chatGenerateDecoyBtn.addEventListener('click', () => this.generateDecoyArtifact());
+        }
+        if (this.chatClearAttachmentBtn) {
+            this.chatClearAttachmentBtn.addEventListener('click', () => this.clearAttachmentSelection());
+        }
         if (this.chatMessageInput) {
             this.chatMessageInput.addEventListener('input', () => this.updateChatComposerState());
             this.chatMessageInput.addEventListener('keydown', (event) => {
@@ -388,6 +412,8 @@ class BotController {
         this.loadSupervisorConfig();
         this.loadMessageDelaysConfig();
         this.loadAccounts();
+        this.loadDecoyTemplates({ silent: true });
+        this.refreshDecoyArtifacts({ silent: true });
     }
 
     _startPolling() {
@@ -2086,6 +2112,16 @@ class BotController {
         if (!chatId) {
             this.updateActiveChatHeader(null);
             this.renderChatMessages([]);
+            this.selectedDecoyAttachmentId = null;
+            this.selectedDecoyTemplateId = '';
+            if (this.chatDecoyTemplateSelect) {
+                this.chatDecoyTemplateSelect.value = '';
+            }
+            if (this.chatAttachmentSelect) {
+                this.chatAttachmentSelect.value = '';
+            }
+            this.updateAttachmentPreview();
+            this.updateAttachmentControls();
             this.updateChatComposerState();
             return;
         }
@@ -2099,6 +2135,7 @@ class BotController {
 
         this.chatAutoScroll = true;
         this.updateChatComposerState();
+        this.refreshDecoyArtifacts({ silent: true });
         if (triggerFetch) {
             this.refreshActiveChat({ force: true });
         }
@@ -2362,6 +2399,253 @@ class BotController {
         }
     }
 
+    async loadDecoyTemplates({ silent = false } = {}) {
+        try {
+            const response = await fetch('/api/decoys/templates');
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data?.success === false) {
+                throw new Error(data?.message || `Failed to load templates (${response.status})`);
+            }
+            this.decoyTemplates = Array.isArray(data?.templates) ? data.templates : [];
+        } catch (error) {
+            console.warn('Failed to load decoy templates:', error);
+            this.decoyTemplates = [];
+            if (!silent) {
+                const message = error && error.message ? error.message : 'Failed to load decoy templates.';
+                this.updateChatStatus(message, 'warning', { autoClear: true });
+            }
+        } finally {
+            this.renderDecoyTemplates();
+            this.updateAttachmentPreview();
+            this.updateAttachmentControls();
+        }
+    }
+
+    renderDecoyTemplates() {
+        if (!this.chatDecoyTemplateSelect) return;
+        const select = this.chatDecoyTemplateSelect;
+        const current = this.selectedDecoyTemplateId;
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = this.decoyTemplates.length ? 'Select a template…' : 'No templates available';
+        select.appendChild(placeholder);
+        for (const template of this.decoyTemplates) {
+            const option = document.createElement('option');
+            option.value = template.id;
+            const typeLabel = template.type === 'pdf' ? 'PDF' : 'Image';
+            option.textContent = `${template.label} • ${typeLabel}`;
+            if (template.description) option.title = template.description;
+            select.appendChild(option);
+        }
+        if (current && this.decoyTemplates.some(template => template.id === current)) {
+            select.value = current;
+        } else {
+            select.value = '';
+            this.selectedDecoyTemplateId = '';
+        }
+    }
+
+    async refreshDecoyArtifacts({ silent = false } = {}) {
+        try {
+            const response = await fetch('/api/decoys');
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data?.success === false) {
+                throw new Error(data?.message || `Failed to load decoys (${response.status})`);
+            }
+            this.decoyArtifacts = Array.isArray(data?.artifacts) ? data.artifacts : [];
+        } catch (error) {
+            console.warn('Failed to load decoy artifacts:', error);
+            this.decoyArtifacts = [];
+            if (!silent) {
+                const message = error && error.message ? error.message : 'Failed to load decoy artifacts.';
+                this.updateChatStatus(message, 'warning', { autoClear: true });
+            }
+        } finally {
+            if (this.selectedDecoyAttachmentId && !this.decoyArtifacts.some(item => item.id === this.selectedDecoyAttachmentId)) {
+                this.selectedDecoyAttachmentId = null;
+            }
+            this.renderDecoyArtifacts();
+            this.updateAttachmentPreview();
+            this.updateAttachmentControls();
+            this.updateChatComposerState();
+        }
+    }
+
+    renderDecoyArtifacts() {
+        if (!this.chatAttachmentSelect) return;
+        const select = this.chatAttachmentSelect;
+        const current = this.selectedDecoyAttachmentId;
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = this.decoyArtifacts.length ? 'No attachment' : 'No decoys generated';
+        select.appendChild(placeholder);
+
+        for (const artifact of this.decoyArtifacts) {
+            const option = document.createElement('option');
+            option.value = artifact.id;
+            const typeLabel = artifact.type === 'pdf' ? 'PDF' : 'Image';
+            const remaining = Math.max(0, Number(artifact.expiresAt || 0) - Date.now());
+            let expiryText = remaining > 0 ? formatDuration(remaining) : 'expired';
+            if (expiryText === '—' && remaining > 0) {
+                expiryText = '<1m';
+            }
+            option.textContent = `${artifact.filename} • ${typeLabel} (${expiryText})`;
+            option.dataset.templateId = artifact.templateId || '';
+            select.appendChild(option);
+        }
+
+        if (current && this.decoyArtifacts.some(artifact => artifact.id === current)) {
+            select.value = current;
+        } else {
+            select.value = '';
+            if (!select.disabled) {
+                this.selectedDecoyAttachmentId = null;
+            }
+        }
+    }
+
+    updateAttachmentPreview() {
+        if (!this.chatAttachmentPreview) return;
+        const artifact = this.decoyArtifacts.find(item => item.id === this.selectedDecoyAttachmentId) || null;
+        if (!artifact) {
+            const template = this.decoyTemplates.find(item => item.id === this.selectedDecoyTemplateId);
+            if (template && template.description) {
+                const typeLabel = template.type === 'pdf' ? 'PDF' : 'Image';
+                this.chatAttachmentPreview.textContent = `${template.label} (${typeLabel}) — ${template.description}`;
+            } else {
+                this.chatAttachmentPreview.textContent = 'No attachment selected.';
+            }
+            return;
+        }
+        const template = this.decoyTemplates.find(item => item.id === artifact.templateId);
+        const typeLabel = artifact.type === 'pdf' ? 'PDF' : 'Image';
+        const remaining = Math.max(0, Number(artifact.expiresAt || 0) - Date.now());
+        let expiryText = remaining > 0 ? formatDuration(remaining) : 'expired';
+        if (expiryText === '—' && remaining > 0) {
+            expiryText = '<1m';
+        }
+        const label = template ? template.label : artifact.filename;
+        const descriptor = template?.description ? ` — ${template.description}` : '';
+        this.chatAttachmentPreview.textContent = `${label} (${typeLabel}) • ${artifact.filename} • Expires in ${expiryText}${descriptor}`;
+    }
+
+    updateAttachmentControls() {
+        const hasChat = !!this.activeChatId;
+        const running = this.botIsRunning;
+        const generating = this.decoyGenerationBusy;
+
+        if (this.chatDecoyTemplateSelect) {
+            const canUseTemplates = hasChat && running && !generating && this.decoyTemplates.length > 0;
+            this.chatDecoyTemplateSelect.disabled = !canUseTemplates;
+            if (!hasChat) {
+                this.chatDecoyTemplateSelect.value = '';
+                this.selectedDecoyTemplateId = '';
+            }
+        }
+
+        if (this.chatAttachmentSelect) {
+            const canSelect = hasChat && running && !generating && this.decoyArtifacts.length > 0;
+            this.chatAttachmentSelect.disabled = !canSelect;
+            if (!hasChat) {
+                this.chatAttachmentSelect.value = '';
+                this.selectedDecoyAttachmentId = null;
+            }
+        }
+
+        if (this.chatGenerateDecoyBtn) {
+            this.chatGenerateDecoyBtn.disabled = !hasChat || !running || generating || !this.selectedDecoyTemplateId;
+        }
+
+        if (this.chatClearAttachmentBtn) {
+            this.chatClearAttachmentBtn.disabled = !hasChat || !running || generating || !this.selectedDecoyAttachmentId;
+        }
+
+        if (this.chatAttachmentPreview) {
+            this.chatAttachmentPreview.setAttribute('aria-busy', generating ? 'true' : 'false');
+        }
+    }
+
+    handleDecoyTemplateChange() {
+        if (!this.chatDecoyTemplateSelect) return;
+        this.selectedDecoyTemplateId = this.chatDecoyTemplateSelect.value || '';
+        this.updateAttachmentPreview();
+        this.updateAttachmentControls();
+    }
+
+    handleAttachmentSelection() {
+        if (!this.chatAttachmentSelect) return;
+        const selected = this.chatAttachmentSelect.value || '';
+        this.selectedDecoyAttachmentId = selected || null;
+        this.updateAttachmentPreview();
+        this.updateAttachmentControls();
+        this.updateChatComposerState();
+    }
+
+    async generateDecoyArtifact() {
+        if (this.decoyGenerationBusy) return;
+        if (!this.selectedDecoyTemplateId) {
+            this.updateChatStatus('Select a decoy template first.', 'warning', { autoClear: true });
+            return;
+        }
+        this.decoyGenerationBusy = true;
+        this.updateAttachmentControls();
+        if (this.chatAttachmentPreview) {
+            this.chatAttachmentPreview.textContent = 'Generating decoy artifact…';
+        }
+
+        let createdArtifact = null;
+        let reloadedArtifacts = false;
+        try {
+            const response = await fetch('/api/decoys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ templateId: this.selectedDecoyTemplateId }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data?.success === false) {
+                throw new Error(data?.message || `Failed to generate decoy (${response.status})`);
+            }
+            const artifact = data?.artifact;
+            if (artifact && artifact.id) {
+                createdArtifact = artifact;
+                this.decoyArtifacts = [artifact, ...this.decoyArtifacts.filter(item => item.id !== artifact.id)];
+                this.selectedDecoyAttachmentId = artifact.id;
+                this.renderDecoyArtifacts();
+                this.updateAttachmentPreview();
+                this.updateChatStatus('Decoy artifact generated.', 'success', { autoClear: true });
+            } else {
+                await this.refreshDecoyArtifacts({ silent: false });
+                reloadedArtifacts = true;
+            }
+        } catch (error) {
+            const message = error && error.message ? error.message : 'Failed to generate decoy artifact.';
+            this.updateChatStatus(message, 'error', { autoClear: true });
+        } finally {
+            this.decoyGenerationBusy = false;
+            if (!createdArtifact && !reloadedArtifacts) {
+                await this.refreshDecoyArtifacts({ silent: true });
+                reloadedArtifacts = true;
+            }
+            if (!reloadedArtifacts) {
+                this.updateAttachmentControls();
+            }
+            this.updateChatComposerState();
+        }
+    }
+
+    clearAttachmentSelection() {
+        if (this.decoyGenerationBusy) return;
+        this.selectedDecoyAttachmentId = null;
+        if (this.chatAttachmentSelect) {
+            this.chatAttachmentSelect.value = '';
+        }
+        this.updateAttachmentPreview();
+        this.updateAttachmentControls();
+        this.updateChatComposerState();
+    }
+
     updateChatComposerState() {
         if (!this.chatMessageInput || !this.chatSendBtn) return;
         const hasChat = !!this.activeChatId;
@@ -2371,10 +2655,12 @@ class BotController {
         this.chatMessageInput.disabled = !hasChat || !running || busy;
         this.chatMessageInput.placeholder = running ? 'Write a reply…' : 'Start the bot to reply';
         const hasText = message.trim().length > 0;
-        this.chatSendBtn.disabled = !hasChat || !running || this.chatSending || this.chatBlending || !hasText;
+        const hasAttachment = !!this.selectedDecoyAttachmentId;
+        this.chatSendBtn.disabled = !hasChat || !running || this.chatSending || this.chatBlending || (!hasText && !hasAttachment);
         if (this.chatBlendBtn) {
             this.chatBlendBtn.disabled = !hasChat || !running || busy;
         }
+        this.updateAttachmentControls();
     }
 
     async submitChatMessage() {
@@ -2382,7 +2668,9 @@ class BotController {
             return;
         }
         const text = this.chatMessageInput.value.trim();
-        if (!text) {
+        const hasAttachment = !!this.selectedDecoyAttachmentId;
+        if (!text && !hasAttachment) {
+            this.updateChatStatus('Add a caption or select a decoy attachment before sending.', 'warning', { autoClear: true });
             return;
         }
         if (!this.botIsRunning) {
@@ -2401,17 +2689,30 @@ class BotController {
             const response = await fetch(`/api/chats/${encodeURIComponent(this.activeChatId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text }),
+                body: JSON.stringify({
+                    message: text,
+                    attachmentId: hasAttachment ? this.selectedDecoyAttachmentId : undefined,
+                }),
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok || data.success === false) {
                 throw new Error(data?.message || `Failed to send message (${response.status})`);
             }
             this.chatMessageInput.value = '';
+            if (hasAttachment) {
+                this.selectedDecoyAttachmentId = null;
+                if (this.chatAttachmentSelect) {
+                    this.chatAttachmentSelect.value = '';
+                }
+                this.updateAttachmentPreview();
+            }
             this.chatAutoScroll = true;
             this.updateChatStatus(data?.message || 'Message sent.', 'success', { autoClear: true });
             await this.refreshActiveChat({ force: true, silent: true });
             this.loadChats({ silent: true, preserveActive: true });
+            if (hasAttachment) {
+                this.refreshDecoyArtifacts({ silent: true });
+            }
         } catch (error) {
             const message = error && error.message ? error.message : 'Failed to send message.';
             this.updateChatStatus(message, 'error');

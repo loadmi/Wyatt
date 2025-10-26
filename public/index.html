@@ -1378,6 +1378,76 @@
             gap: 10px;
         }
 
+        .chat-attachment-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .chat-attachment-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1 1 220px;
+        }
+
+        .chat-attachment-group label {
+            font-size: 0.85rem;
+            color: var(--subtle);
+        }
+
+        .chat-attachment-group select,
+        .chat-attachment-group button {
+            border-radius: 8px;
+            border: 1px solid var(--tab-border);
+            background: var(--container-bg);
+            color: var(--text);
+            padding: 8px 10px;
+            font-size: 0.9rem;
+        }
+
+        .chat-attachment-group button {
+            cursor: pointer;
+            border: none;
+            background: rgba(37, 99, 235, 0.18);
+            color: #93c5fd;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .chat-attachment-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-attachment-actions button {
+            flex: 1 1 auto;
+        }
+
+        .theme-light .chat-attachment-group button {
+            color: #1e40af;
+        }
+
+        .chat-attachment-group button:hover:not(:disabled) {
+            background: rgba(37, 99, 235, 0.32);
+            transform: translateY(-1px);
+        }
+
+        .chat-attachment-group button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .chat-attachment-preview {
+            flex: 1 1 100%;
+            font-size: 0.8rem;
+            color: var(--subtle);
+            background: rgba(148, 163, 184, 0.12);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
         .chat-composer textarea {
             width: 100%;
             min-height: 72px;
@@ -2117,6 +2187,28 @@
                             </div>
                             <div id="chatMessages" class="chat-messages" aria-busy="false"></div>
                             <form id="chatComposer" class="chat-composer">
+                                <div class="chat-attachment-controls" aria-label="Attachment controls">
+                                    <div class="chat-attachment-group">
+                                        <label for="chatDecoyTemplateSelect">Decoy template</label>
+                                        <select id="chatDecoyTemplateSelect" aria-label="Decoy template" disabled>
+                                            <option value="">Select a template…</option>
+                                        </select>
+                                    </div>
+                                    <div class="chat-attachment-group">
+                                        <label for="chatAttachmentSelect">Available decoys</label>
+                                        <select id="chatAttachmentSelect" aria-label="Available decoy attachments" disabled>
+                                            <option value="">No attachment</option>
+                                        </select>
+                                    </div>
+                                    <div class="chat-attachment-group">
+                                        <span class="visually-hidden" id="chatAttachmentActionsLabel">Attachment actions</span>
+                                        <div class="chat-attachment-actions" role="group" aria-labelledby="chatAttachmentActionsLabel">
+                                            <button id="chatGenerateDecoyBtn" type="button" disabled>Generate</button>
+                                            <button id="chatClearAttachmentBtn" type="button" disabled>Clear</button>
+                                        </div>
+                                    </div>
+                                    <div id="chatAttachmentPreview" class="chat-attachment-preview" aria-live="polite">No attachment selected.</div>
+                                </div>
                                 <textarea id="chatMessageInput" placeholder="Write a reply…" aria-label="Reply message" disabled></textarea>
                                 <div class="chat-composer-actions">
                                     <button id="chatBlendBtn" type="button" disabled>Blend Reply</button>

@@ -8,6 +8,7 @@ import { recordInbound, recordOutbound } from "../metrics";
 import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 import { toIdString } from "./idUtils";
 import { sanitizeMessageText } from "../utils/logSanitizer";
+import type { OutboundAttachment } from "./client";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -697,16 +698,52 @@ async function sendMessageWithFallback(params: {
   startedAt: number;
   personaRecord: any;
   logPrefix?: string;
+  attachment?: OutboundAttachment | null;
 }): Promise<boolean> {
-  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord, logPrefix = "" } = params;
+  const { client, message, inputPeer, replyText, senderIdString, chatId, startedAt, personaRecord, logPrefix = "", attachment } = params;
   const trimmed = (replyText || "").trim();
-  if (!trimmed) {
-    console.warn("Empty reply text; skipping send.");
+  const hasAttachment = Boolean(attachment?.path);
+  if (!hasAttachment && !trimmed) {
+    console.warn("Empty reply text and no attachment; skipping send.");
     return false;
   }
 
   const isGroupContext = isPeerChatOrChannel(message?.peerId);
   let outboundRecorded = false;
+  const targetPeer = inputPeer || message.peerId;
+
+  if (hasAttachment) {
+    const sendOptions: any = {
+      file: attachment!.path,
+      caption: trimmed || undefined,
+      fileName: attachment!.filename,
+    };
+    if (attachment!.mimeType) {
+      sendOptions.mimeType = attachment!.mimeType;
+    }
+    if (attachment!.kind === "document" || attachment!.mimeType === "application/pdf") {
+      sendOptions.forceDocument = true;
+    }
+
+    try {
+      await client.sendFile(targetPeer, sendOptions);
+      recordOutbound(senderIdString, Date.now() - startedAt);
+      outboundRecorded = true;
+      console.log(
+        `✅ ${logPrefix}Attachment sent to ${senderIdString} using ${formatPersonaLabel(
+          personaRecord?.personaId || getDefaultPersonaId(),
+        )}: ${attachment!.filename}${trimmed ? ` (caption: "${trimmed}")` : ""}`,
+      );
+      updateLastInteraction(senderIdString, chatId);
+      return true;
+    } catch (error) {
+      console.warn(`${logPrefix}Failed to send attachment, falling back to text:`, (error as any)?.message || error);
+      // Continue with text fallback if available
+      if (!trimmed) {
+        return false;
+      }
+    }
+  }
 
   // Try high-level sendMessage first
   try {
@@ -714,7 +751,7 @@ async function sendMessageWithFallback(params: {
     if (isGroupContext) {
       sendOptions.replyTo = message.id;
     }
-    await client.sendMessage(inputPeer || message.peerId, sendOptions);
+    await client.sendMessage(targetPeer, sendOptions);
     recordOutbound(senderIdString, Date.now() - startedAt);
     outboundRecorded = true;
     console.log(
@@ -731,7 +768,7 @@ async function sendMessageWithFallback(params: {
   // Fallback to low-level API
   try {
     const sendParams: any = {
-      peer: inputPeer || message.peerId,
+      peer: targetPeer,
       message: trimmed,
       randomId: bigInt(Math.floor(Math.random() * 1e16)),
     };

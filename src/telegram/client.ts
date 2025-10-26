@@ -38,6 +38,18 @@ type ChatCacheEntry = {
   inputPeer: any;
 };
 
+export type OutboundAttachment = {
+  path: string;
+  filename: string;
+  mimeType?: string;
+  kind?: "photo" | "document";
+};
+
+export type ManualMessagePayload = {
+  text?: string;
+  attachment?: OutboundAttachment | null;
+};
+
 export type DashboardChatSummary = {
   id: string;
   title: string;
@@ -681,7 +693,10 @@ export async function getChatHistory(chatId: string, limit = 150): Promise<Dashb
   };
 }
 
-export async function sendMessageToChat(chatId: string, text: string): Promise<{ success: boolean; message: string }> {
+export async function sendMessageToChat(
+  chatId: string,
+  payload: string | ManualMessagePayload,
+): Promise<{ success: boolean; message: string }> {
   try {
     ensureClientReady();
   } catch (error) {
@@ -694,13 +709,56 @@ export async function sendMessageToChat(chatId: string, text: string): Promise<{
     return { success: false, message: "Chat not found or not accessible." };
   }
 
-  const payload = typeof text === "string" ? text.trim() : String(text ?? "").trim();
-  if (!payload) {
-    return { success: false, message: "Message text is required." };
+  const options: ManualMessagePayload = typeof payload === "string" ? { text: payload } : (payload ?? {});
+  const text = typeof options.text === "string" ? options.text.trim() : "";
+  const attachment = options.attachment && options.attachment.path ? options.attachment : null;
+
+  if (!text && !attachment) {
+    return { success: false, message: "A caption or attachment is required." };
+  }
+
+  if (attachment) {
+    const caption = text || undefined;
+    const sendOptions: any = {
+      file: attachment.path,
+      caption,
+      fileName: attachment.filename,
+    };
+    if (attachment.mimeType) {
+      sendOptions.mimeType = attachment.mimeType;
+    }
+    if (attachment.kind === "document" || attachment.mimeType === "application/pdf") {
+      sendOptions.forceDocument = true;
+    }
+
+    try {
+      await client.sendFile(entry.inputPeer, sendOptions);
+      return { success: true, message: caption ? "Attachment sent with caption." : "Attachment sent." };
+    } catch (error) {
+      console.warn(`Failed to send attachment to chat ${chatId}:`, (error as any)?.message || error);
+      if (text) {
+        try {
+          await client.sendMessage(entry.inputPeer, { message: text });
+          return {
+            success: true,
+            message: "Attachment was rejected, but caption was delivered.",
+          };
+        } catch (fallbackError) {
+          console.error(
+            `Failed to send fallback caption to chat ${chatId}:`,
+            (fallbackError as any)?.message || fallbackError,
+          );
+          const reason = (error as any)?.message || "Attachment rejected by Telegram.";
+          return { success: false, message: reason };
+        }
+      }
+      const reason = (error as any)?.message || "Attachment rejected by Telegram.";
+      return { success: false, message: reason };
+    }
   }
 
   try {
-    await client.sendMessage(entry.inputPeer, { message: payload });
+    await client.sendMessage(entry.inputPeer, { message: text });
     return { success: true, message: "Message sent." };
   } catch (error) {
     console.error(`Failed to send manual message to chat ${chatId}:`, error);
