@@ -152,9 +152,9 @@ class BotController {
         }
         // Supervisor configuration event listeners
         if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
-            this.supervisorModeRadios.forEach(radio => {
+            for (const radio of this.supervisorModeRadios) {
                 radio.addEventListener('change', () => this.updateSupervisorUIState());
-            });
+            }
         }
         if (this.supervisorSaveBtn) {
             this.supervisorSaveBtn.addEventListener('click', () => this.saveSupervisorConfig());
@@ -242,12 +242,12 @@ class BotController {
             this.chatRefreshBtn.addEventListener('click', () => this.loadChats({ silent: false, force: true }));
         }
         if (this.chatSpeedButtons.length > 0) {
-            this.chatSpeedButtons.forEach(button => {
+            for (const button of this.chatSpeedButtons) {
                 button.addEventListener('click', () => {
                     const speed = button.dataset.speed || 'normal';
                     this.setChatRefreshSpeed(speed);
                 });
-            });
+            }
         }
         this.updateChatSpeedToggleUI();
         if (this.chatSearchInput) {
@@ -310,7 +310,7 @@ class BotController {
             if (e.key === 'Escape') this.closeMobileSidebar();
         });
         // Ensure sidebar closes when resizing to desktop
-        window.addEventListener('resize', () => {
+        globalThis.window.addEventListener('resize', () => {
             if (!this.isMobile()) this.closeMobileSidebar();
         });
 
@@ -340,7 +340,7 @@ class BotController {
 
         // Initialize charts if Chart.js is available; otherwise continue without graphs
         try {
-            if (typeof window !== 'undefined' && window.Chart) {
+            if (typeof globalThis.window !== 'undefined' && globalThis.window.Chart) {
                 this.setupMetricsDashboard();
             } else {
                 this.log('Charts not available (skipping graph init)');
@@ -461,12 +461,12 @@ class BotController {
                 this.personaSelect.innerHTML = '';
 
                 // Add options for each available personality
-                data.available.forEach(persona => {
+                for (const persona of data.available) {
                     const option = document.createElement('option');
                     option.value = persona;
                     option.textContent = persona;
                     this.personaSelect.appendChild(option);
-                });
+                }
 
                 // Try to set the current personality; if it's not a known option,
                 // default to 'granny.json' when available and persist it.
@@ -503,12 +503,12 @@ class BotController {
             // Populate models
             if (Array.isArray(data.availableOpenRouterModels)) {
                 this.openrouterModelSelect.innerHTML = '';
-                data.availableOpenRouterModels.forEach(model => {
+                for (const model of data.availableOpenRouterModels) {
                     const option = document.createElement('option');
                     option.value = model;
                     option.textContent = model;
                     this.openrouterModelSelect.appendChild(option);
-                });
+                }
             }
 
             // Set current model
@@ -557,9 +557,9 @@ class BotController {
             // Set mode
             const mode = data.mode || 'wake-up';
             if (this.supervisorModeRadios && this.supervisorModeRadios.length > 0) {
-                this.supervisorModeRadios.forEach(radio => {
+                for (const radio of this.supervisorModeRadios) {
                     radio.checked = radio.value === mode;
-                });
+                }
             }
             
             // Set contact
@@ -618,11 +618,11 @@ class BotController {
         
         // Get selected mode
         let selectedMode = 'wake-up';
-        this.supervisorModeRadios.forEach(radio => {
+        for (const radio of this.supervisorModeRadios) {
             if (radio.checked) {
                 selectedMode = radio.value;
             }
-        });
+        }
         
         // Update contact input state
         if (this.supervisorContactInput) {
@@ -669,11 +669,11 @@ class BotController {
             this.alwaysDelayMin, this.alwaysDelayMax,
             this.sleepThresholdInput
         ];
-        allDelayInputs.forEach(input => {
+        for (const input of allDelayInputs) {
             if (input) {
                 input.disabled = selectedMode === 'disabled';
             }
-        });
+        }
     }
 
     async saveSupervisorConfig() {
@@ -681,11 +681,11 @@ class BotController {
         
         // Get selected mode
         let mode = 'wake-up';
-        this.supervisorModeRadios.forEach(radio => {
+        for (const radio of this.supervisorModeRadios) {
             if (radio.checked) {
                 mode = radio.value;
             }
-        });
+        }
         
         // Get contact
         const contact = this.supervisorContactInput ? this.supervisorContactInput.value.trim() : '';
@@ -1063,7 +1063,7 @@ class BotController {
         const activeId = typeof this.activeAccountId === 'string' ? this.activeAccountId : null;
         let activeDetected = false;
 
-        this.accounts.forEach(account => {
+        for (const account of this.accounts) {
             const isActive = account.isActive === true || (activeId && account.id === activeId);
             if (isActive) {
                 activeDetected = true;
@@ -1155,7 +1155,7 @@ class BotController {
 
             card.appendChild(actions);
             this.accountList.appendChild(card);
-        });
+        }
 
         this.hasActiveAccount = activeDetected;
         if (!activeDetected && this.accounts.length > 0) {
@@ -1369,7 +1369,7 @@ class BotController {
             return;
         }
         const name = account.label || 'Account';
-        if (typeof window !== 'undefined' && !window.confirm(`Remove account "${name}"?`)) {
+        if (typeof globalThis.window !== 'undefined' && !globalThis.window.confirm(`Remove account "${name}"?`)) {
             return;
         }
         try {
@@ -1604,12 +1604,12 @@ class BotController {
         placeholder.disabled = true;
         this.chatPersonaSelect.appendChild(placeholder);
 
-        personas.forEach(persona => {
+        for (const persona of personas) {
             const option = document.createElement('option');
             option.value = persona;
             option.textContent = formatPersonaName(persona);
             this.chatPersonaSelect.appendChild(option);
-        });
+        }
 
         if (activePersonaId && !personas.includes(activePersonaId)) {
             const option = document.createElement('option');
@@ -1759,17 +1759,17 @@ class BotController {
         let changed = false;
         const apply = (collection) => {
             if (!Array.isArray(collection)) return;
-            collection.forEach(item => {
+            for (const item of collection) {
                 if (item.id === chat.id) {
                     const fields = ['personaId', 'personaLabel', 'usesDefaultPersona', 'personaUpdatedAt'];
-                    fields.forEach(field => {
+                    for (const field of fields) {
                         if (Object.prototype.hasOwnProperty.call(chat, field) && chat[field] !== undefined && chat[field] !== null && item[field] !== chat[field]) {
                             item[field] = chat[field];
                             changed = true;
                         }
-                    });
+                    }
                 }
-            });
+            }
         };
 
         apply(this.chatListData);
@@ -1807,7 +1807,7 @@ class BotController {
             }
         }
 
-        chats.forEach(chat => {
+        for (const chat of chats) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'chat-list-item';
@@ -1872,7 +1872,7 @@ class BotController {
             }
 
             this.chatListContainer.appendChild(button);
-        });
+        }
 
         this.highlightActiveChat();
     }
@@ -1880,12 +1880,12 @@ class BotController {
     highlightActiveChat() {
         if (!this.chatListContainer) return;
         const buttons = Array.from(this.chatListContainer.querySelectorAll('.chat-list-item'));
-        buttons.forEach(button => {
+        for (const button of buttons) {
             const id = button.dataset.chatId;
             const isActive = id === this.activeChatId;
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-selected', String(isActive));
-        });
+        }
     }
 
     loadChatRefreshSpeed() {
@@ -1911,7 +1911,7 @@ class BotController {
 
     updateChatSpeedToggleUI() {
         if (!Array.isArray(this.chatSpeedButtons)) return;
-        this.chatSpeedButtons.forEach(button => {
+        for (const button of this.chatSpeedButtons) {
             const speed = button.dataset.speed || 'normal';
             const config = this.chatRefreshRates?.[speed];
             const isActive = speed === this.chatRefreshSpeed;
@@ -1933,13 +1933,13 @@ class BotController {
                 }
                 button.title = `Refresh every ${formatted}`;
             }
-        });
+        }
     }
 
     // Mobile helpers
     isMobile() {
         try {
-            return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+            return typeof globalThis.window !== 'undefined' && globalThis.window.matchMedia && globalThis.window.matchMedia('(max-width: 720px)').matches;
         } catch {
             return false;
         }
@@ -2241,7 +2241,7 @@ class BotController {
 
         container.classList.remove('empty');
 
-        messages.forEach(message => {
+        for (const message of messages) {
             const wrapper = document.createElement('div');
             wrapper.className = `chat-message ${message.from === 'bot' ? 'outbound' : 'inbound'}`;
 
@@ -2265,7 +2265,7 @@ class BotController {
             wrapper.appendChild(meta);
 
             container.appendChild(wrapper);
-        });
+        }
 
         if (shouldStick) {
             container.scrollTop = container.scrollHeight;
@@ -2582,7 +2582,7 @@ class BotController {
         }
 
         const topContacts = contacts.slice(0, 10);
-        topContacts.forEach(contact => {
+        for (const contact of topContacts) {
             const row = document.createElement('tr');
             const idCell = document.createElement('td');
             const inboundCell = document.createElement('td');
@@ -2604,14 +2604,14 @@ class BotController {
             row.appendChild(outboundCell);
             row.appendChild(lastSeenCell);
             this.leaderboardBody.appendChild(row);
-        });
+        }
     }
 
     handleTabActivated(tabId) {
         this.currentTab = tabId;
         if (tabId === 'metrics') {
             this.refreshMetrics();
-            window.requestAnimationFrame(() => this.resizeCharts());
+            globalThis.window.requestAnimationFrame(() => this.resizeCharts());
         } else if (tabId === 'activity' && this.logDiv) {
             this.logDiv.scrollTop = this.logDiv.scrollHeight;
         }
@@ -2708,7 +2708,7 @@ class TabController {
         this.tabs = [];
         this.activeTab = null;
         const buttons = Array.from(document.querySelectorAll('.tab-button[role="tab"]'));
-        buttons.forEach((button, index) => {
+        for (const [index, button] of buttons.entries()) {
             const slug = button.dataset.tab;
             const panelId = button.getAttribute('aria-controls');
             const panel = panelId ? document.getElementById(panelId) : null;
@@ -2718,7 +2718,7 @@ class TabController {
             this.tabs.push({ slug, button, panel, index });
             button.addEventListener('click', () => this.activate(slug));
             button.addEventListener('keydown', (event) => this.onKeydown(event, slug));
-        });
+        }
 
         const saved = this.getSavedTab();
         if (saved && this.tabs.some(tab => tab.slug === saved)) {
@@ -2732,7 +2732,7 @@ class TabController {
     activate(slug, { focusButton = true, skipStore = false } = {}) {
         if (this.activeTab === slug) return;
         this.activeTab = slug;
-        this.tabs.forEach(({ slug: tabSlug, button, panel }) => {
+        for (const { slug: tabSlug, button, panel } of this.tabs) {
             const isActive = tabSlug === slug;
             button.setAttribute('aria-selected', String(isActive));
             button.tabIndex = isActive ? 0 : -1;
@@ -2746,7 +2746,7 @@ class TabController {
                 panel.setAttribute('hidden', '');
                 panel.setAttribute('aria-hidden', 'true');
             }
-        });
+        }
 
         if (!skipStore) {
             try {
