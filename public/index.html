@@ -1908,8 +1908,9 @@
 
                         <div class="supervisor-delays-section">
                             <div class="form-field supervisor-delay-group" id="wakeUpDelayGroup">
-                                <label>Wake-Up Mode Timeout</label>
-                                <div class="delay-inputs">
+                                <span class="form-field-label">Wake-Up Mode Timeout</span>
+                                <div class="delay-inputs" role="group" aria-labelledby="wakeUpDelayLabel">
+                                    <span id="wakeUpDelayLabel" class="visually-hidden">Wake-Up Mode Timeout Configuration</span>
                                     <div class="delay-input-wrapper">
                                         <label for="wakeUpDelayMin" class="delay-sublabel">Min (seconds)</label>
                                         <input type="number" id="wakeUpDelayMin" min="1" max="60" step="1" value="5">
@@ -1923,8 +1924,9 @@
                             </div>
 
                             <div class="form-field supervisor-delay-group" id="alwaysDelayGroup" style="display: none;">
-                                <label>Always Mode Timeout</label>
-                                <div class="delay-inputs">
+                                <span class="form-field-label">Always Mode Timeout</span>
+                                <div class="delay-inputs" role="group" aria-labelledby="alwaysDelayLabel">
+                                    <span id="alwaysDelayLabel" class="visually-hidden">Always Mode Timeout Configuration</span>
                                     <div class="delay-input-wrapper">
                                         <label for="alwaysDelayMin" class="delay-sublabel">Min (seconds)</label>
                                         <input type="number" id="alwaysDelayMin" min="10" max="120" step="1" value="30">
@@ -2157,13 +2159,13 @@
                             <div class="chart-card">
                                 <h3>Message Throughput</h3>
                                 <div class="chart-container">
-                                    <canvas id="throughputChart" aria-label="Message throughput over time" role="img"></canvas>
+                                    <canvas id="throughputChart" aria-label="Message throughput over time"></canvas>
                                 </div>
                             </div>
                             <div class="chart-card">
                                 <h3>LLM Provider Breakdown</h3>
                                 <div class="chart-container">
-                                    <canvas id="providerChart" aria-label="LLM provider request distribution" role="img"></canvas>
+                                    <canvas id="providerChart" aria-label="LLM provider request distribution"></canvas>
                                 </div>
                             </div>
                         </div>
