@@ -5,7 +5,7 @@ import bigInt from "big-integer";
 import { appConfig, randomInRange, sleep } from "../config";
 import { getResponse } from "../llm/llm";
 import { recordInbound, recordOutbound } from "../metrics";
-import { ensureChatPersonaRecord } from "./chatPersonality";
+import { ensureChatPersonaRecord, formatPersonaLabel, getDefaultPersonaId } from "./chatPersonality";
 
 
 // Simple in-memory cache of fetched histories per user to avoid re-fetching
@@ -426,9 +426,10 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
     console.error("Failed to build context:", e);
   }
 
+  let personaRecord: any = null;
   let personaPrompt = appConfig().systemPrompt;
   try {
-    const personaRecord = await ensureChatPersonaRecord(conversationKey);
+    personaRecord = await ensureChatPersonaRecord(conversationKey);
     if (personaRecord?.systemPrompt?.trim()) {
       personaPrompt = personaRecord.systemPrompt;
     }
@@ -528,7 +529,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
       recordOutbound(senderIdString, Date.now() - composeStartedAt);
       outboundRecorded = true;
     }
-    console.log(`Replied to ${senderIdString}: "${replyText}"`);
+    console.log(`Replied to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
 
     // Update last interaction time after successful response
     updateLastInteraction(senderIdString, chatId);
@@ -551,7 +552,7 @@ export async function messageHandler(event: NewMessageEvent): Promise<void> {
         recordOutbound(senderIdString, Date.now() - composeStartedAt);
         outboundRecorded = true;
       }
-      console.log(`Replied via API to ${senderIdString}: "${replyText}"`);
+      console.log(`Replied via API to ${senderIdString} using ${formatPersonaLabel(personaRecord?.personaId || getDefaultPersonaId())}: "${replyText}"`);
 
       // Update last interaction time after successful response
       updateLastInteraction(senderIdString, chatId);
